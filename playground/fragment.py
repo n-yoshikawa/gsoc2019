@@ -9,6 +9,14 @@ for mol in suppl:
     rwmol = Chem.RWMol(mol)
     for begin, end in mol.GetSubstructMatches(RotatableBond):
         rwmol.RemoveBond(begin, end)
+        beginAtom = rwmol.GetAtomWithIdx(begin)
+        endAtom = rwmol.GetAtomWithIdx(end)
+        if beginAtom.GetAtomicNum() != 6 and beginAtom.GetIsAromatic():
+            beginAtom.SetNumExplicitHs(1)
+            beginAtom.SetNoImplicit(True)
+        if endAtom.GetAtomicNum() != 6 and endAtom.GetIsAromatic():
+            endAtom.SetNumExplicitHs(1)
+            endAtom.SetNoImplicit(True)
     fragments = Chem.rdmolops.GetMolFrags(rwmol.GetMol(), asMols=True)
     for fragment in fragments:
         if fragment.GetNumHeavyAtoms() < 5:
