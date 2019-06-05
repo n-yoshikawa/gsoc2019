@@ -29,6 +29,9 @@ GNU General Public License for more details.
 #include <openbabel/elements.h>
 #include <openbabel/generic.h>
 #include "rand.h"
+#include <openbabel/cppoptlib/meta.h>
+#include <openbabel/cppoptlib/problem.h>
+#include <openbabel/cppoptlib/solver/bfgssolver.h>
 
 #include <openbabel/stereo/stereo.h>
 #include <openbabel/stereo/cistrans.h>
@@ -38,6 +41,11 @@ GNU General Public License for more details.
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <cassert>
+#include <cmath>
+#include <random>
+
+#include <Eigen/Eigenvalues>
 
 using namespace std;
 
@@ -115,13 +123,19 @@ namespace OpenBabel {
       delete _d;
   }
 
+  float OBDistanceGeometry::GetUpperBounds(int i, int j) {
+      return _d->GetUpperBounds(i, j);
+  }
+  float OBDistanceGeometry::GetLowerBounds(int i, int j) {
+        return _d->GetLowerBounds(i, j);
+  }
   bool OBDistanceGeometry::Setup(const OBMol &mol, bool useCurrentGeometry)
   {
-    cout << "set up dg" << endl;
     if (_d != NULL)
       delete _d;
     // TODO: add IsSetupNeeded() like OBForceField to prevent duplication of work
 
+    dim = 4;
     _mol = mol;
     _mol.SetDimension(3);
     _vdata = _mol.GetAllData(OBGenericDataType::StereoData);
@@ -156,6 +170,13 @@ namespace OpenBabel {
     if (_d->debug) {
       cerr << endl << " Smoothed Matrix\n";
       cerr << _d->bounds << endl;
+    }
+    for(size_t i=0; i<mol.NumAtoms(); ++i) {
+      for(size_t j=0; j<mol.NumAtoms(); ++j) {
+        float ub = _d->GetUpperBounds(i, j);
+        float lb = _d->GetLowerBounds(i, j);
+        assert(ub > lb);
+      }
     }
 
     return true;
@@ -751,8 +772,8 @@ namespace OpenBabel {
   //! Implements the smoothing described by
   //! Dress, AWM, Havel TF; Discrete Applied Mathematics (1988) v. 19 pp. 129-144
   //! "Shortest Path Problems and Molecular Conformation"
-  void OBDistanceGeometry::TriangleSmooth()
   //! https://doi.org/10.1016/0166-218X(88)90009-1
+  void OBDistanceGeometry::TriangleSmooth()
   {
     int a, b, c;
 
@@ -965,30 +986,61 @@ namespace OpenBabel {
 
   bool OBDistanceGeometry::CheckStereoConstraints()
   {
-    // Check whether input SMILES and reconstructed SMILES are the same.
+    // Check all stereo constraints
+    // First, gather the known, specified stereochemistry
+    // Get TetrahedralStereos and make a vector of corresponding OBStereoUnits
+    // Get CisTrans and make a vector of those too
+    std::vector<OBTetrahedralStereo*> tetra, newtetra;
+    std::vector<OBCisTransStereo*> cistrans, newcistrans;
+    OBStereoUnitSet ctSunits, tetSunits;
+    std::vector<OBGenericData*> vdata = _mol.GetAllData(OBGenericDataType::StereoData);
+    OBStereo::Ref atom_id;
+    OBStereo::Ref bond_id;
+    for (std::vector<OBGenericData*>::iterator data = vdata.begin(); data != vdata.end(); ++data) {
+      // If it's cis-trans and specified
+      if (((OBStereoBase*)*data)->GetType() == OBStereo::CisTrans) {
+        OBCisTransStereo *ct = dynamic_cast<OBCisTransStereo*>(*data);
+        if (ct->GetConfig().specified) {
+          cistrans.push_back(ct);
+          bond_id = _mol.GetBond(_mol.GetAtomById(ct->GetConfig().begin),
+                                 _mol.GetAtomById(ct->GetConfig().end))->GetId();
+          ctSunits.push_back(OBStereoUnit(OBStereo::CisTrans, bond_id));
+        }
+      }
 
-    // Input SMILES
-    OBConversion smi_input;
-    smi_input.SetOutFormat("can");
-    std::string str_smi_input = smi_input.WriteString(&_mol);
+      if (((OBStereoBase*)*data)->GetType() == OBStereo::Tetrahedral) {
+        OBTetrahedralStereo *th = dynamic_cast<OBTetrahedralStereo*>(*data);
+        if (th->GetConfig().specified) {
+          tetra.push_back(th);
+          atom_id = th->GetConfig().center;
+          tetSunits.push_back(OBStereoUnit(OBStereo::Tetrahedral, atom_id));
+        }
+      } // end tetrahedral
+    } // end for (i.e., saving the known, specified stereochemistry
 
-    // Reconstructed SMILES
-    // Firstly, get SDF of current molecule
-    std::stringstream ss_sdf;
-    OBConversion mol2sdf;
-    mol2sdf.SetOutStream(&ss_sdf);
-    mol2sdf.SetOutFormat("sdf");
-    mol2sdf.Write(&_mol);
+    // We'll check cis/trans first
+    newcistrans = CisTransFrom3D(&_mol, ctSunits, false);
+    std::vector<OBCisTransStereo*>::iterator origct, newct;
+    for (origct=cistrans.begin(), newct=newcistrans.begin(); origct!=cistrans.end(); ++origct, ++newct) {
+      if ((*origct)->GetConfig(OBStereo::ShapeU)
+          !=  (*newct)->GetConfig(OBStereo::ShapeU)) {
+        // Wrong cis/trans stereochemistry
+        return false;
+      }
+    } // end checking cis-trans
 
-    // Next, get SMILES from the SDF
-    OBConversion sdf2smi;
-    sdf2smi.SetInStream(&ss_sdf);
-    sdf2smi.SetInAndOutFormats("sdf", "can");
-    OBMol mol_sdf;
-    sdf2smi.Read(&mol_sdf);
-    std::string str_smi = sdf2smi.WriteString(&mol_sdf);
+    // Perceive TetrahedralStereos from current geometry
+    newtetra = TetrahedralFrom3D(&_mol, tetSunits, false);
+    // Iterate through original and new stereo and validate
+    std::vector<OBTetrahedralStereo*>::iterator origth, newth;
+    for (origth=tetra.begin(), newth=newtetra.begin(); origth!=tetra.end(); ++origth, ++newth) {
+      if ( (*origth)->GetConfig(OBStereo::Clockwise, OBStereo::ViewFrom)
+           != (*newth)->GetConfig(OBStereo::Clockwise, OBStereo::ViewFrom) )
+        return false; // found an invalid center
+    }
 
-    return str_smi_input == str_smi;
+    // everything validated
+    return true;
   }
 
   Eigen::MatrixXf OBDistanceGeometry::GetBoundsMatrix()
@@ -1009,6 +1061,106 @@ namespace OpenBabel {
       return false;
   }
 
+  bool OBDistanceGeometry::generateInitialCoords(void) {
+    // place atoms randomly
+    unsigned int N = _mol.NumAtoms();
+    // random distance matrix
+    Eigen::MatrixXd distMat = Eigen::MatrixXd::Zero(N, N);
+    std::random_device rnd;
+    std::mt19937 mt(rnd());
+    for (size_t i=0; i<N; ++i) {
+      for(size_t j=0; j<i; ++j) {
+        double lb = _d->GetLowerBounds(i, j);
+        double ub = _d->GetUpperBounds(i, j);
+        std::uniform_real_distribution<> unif(lb, ub);
+        double v = unif(mt);
+        distMat(i, j) = v;
+        distMat(j, i) = v;
+      }
+    }
+    cout << "distMat:\n" << distMat << endl;
+    // metrix matrix
+    // https://github.com/rdkit/rdkit/blob/master/Code/DistGeom/DistGeomUtils.cpp
+    Eigen::MatrixXd sqMat(N, N);
+    double sumSqD2 = 0.0;
+    for (size_t i=0; i<N; i++) {
+      for (size_t j=0; j<=i; j++) {
+        double d2 = distMat(i, j) * distMat(i, j);
+        sqMat(i, j) = d2;
+        sqMat(j, i) = d2;
+        sumSqD2 += d2;
+      }
+    }
+    cout << "sqMat:\n" << sqMat << endl;
+    sumSqD2 /= (N * N);
+
+    Eigen::VectorXd sqD0i = Eigen::VectorXd::Zero(N);
+    for (size_t i = 0; i < N; i++) {
+      for (size_t j = 0; j < N; j++) {
+        sqD0i(i) += sqMat(i, j);
+      }
+      sqD0i(i) /= N;
+      sqD0i(i) -= sumSqD2;
+    }
+
+    Eigen::MatrixXd T(N, N);
+    for (size_t i = 0; i < N; i++) {
+      for (size_t j = 0; j <= i; j++) {
+        double v = 0.5 * (sqD0i(i) + sqD0i(j) - sqMat(i, j));
+        T(i, j) = v;
+        T(j, i) = v;
+      }
+    }
+    cout << "T:\n" << T << endl;
+    unsigned int dim = 4;
+    // TODO: in case of N < dim
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(T);
+    Eigen::VectorXd eigVals = es.eigenvalues();
+    Eigen::MatrixXd eigVecs = es.eigenvectors();
+    cout << "eigVals:\n" << eigVals << endl;
+    cout << "eigVecs:\n" << eigVecs << endl;
+
+    for (size_t i = 0; i < N; i++) {
+      if(eigVals(i) > 0) eigVals(i) = sqrt(eigVals(i));
+    }
+    cout << "eigVals (sqrt):\n" << eigVals << endl;
+
+    _coord.resize(N * dim);
+    for (size_t i = 0; i < N; i++) {
+      for (size_t j = 0; j < dim; j++) {
+        _coord(i*dim + j) = eigVals(N-1-j) * eigVecs(j, N-1-i);
+      }
+    }
+    cout << "coord:\n" << _coord << endl;
+    Eigen::MatrixXd distMat2(N, N);
+    for (size_t i = 0; i < N; i++) {
+      for (size_t j = 0; j < N; j++) {
+        distMat2(i, j) = sqrt(pow(_coord(i*dim + 0)-_coord(j*dim + 0), 2.0)
+                         + pow(_coord(i*dim + 1)-_coord(j*dim + 1), 2.0)
+                         + pow(_coord(i*dim + 2)-_coord(j*dim + 2), 2.0)
+                         + pow(_coord(i*dim + 3)-_coord(j*dim + 3), 2.0));
+      }
+    }
+    cout << "generated distance matrix" << endl;
+    cout << distMat2 << endl;
+    return true;
+  }
+
+
+  bool OBDistanceGeometry::firstMinimization(void) {
+    DistGeomFunc f(this);
+    cout << "Before optimization" << endl;
+    cout << _coord << endl;
+    cppoptlib::BfgsSolver<DistGeomFunc> solver;
+    solver.minimize(f, _coord);
+    cout << "After optimization" << endl;
+    cout << _coord << endl;
+    return true;
+  }
+
+  bool OBDistanceGeometry::minimizeFourthDimension(void) {
+  }
+
   void OBDistanceGeometry::AddConformer()
   {
     // We should use Eigen here, and cast to double*
@@ -1026,8 +1178,25 @@ namespace OpenBabel {
     unsigned int i,j;
     float lBounds, uBounds, dist;
     bool finished = false;
+    int trial = 0;
     while (!finished) {
-      for (unsigned int attempt = 0; attempt < 10; ++attempt) {
+      trial++;
+      if(trial > 25) {
+        obErrorLog.ThrowError(__FUNCTION__, "Distance Geometry failed 25 times. Break.", obWarning);
+        break;
+      }
+      // https://github.com/rdkit/rdkit/blob/8524652a86f8c050239bde3bf61f4dff642e4c7a/Code/GraphMol/DistGeomHelpers/Embedder.cpp#L603
+      bool gotCoords = false;
+      unsigned int iter = 0;
+      while ((gotCoords == false) && (iter < 100)) {
+        iter++;
+        gotCoords = generateInitialCoords();
+        if(gotCoords) gotCoords = firstMinimization();
+        if(gotCoords) gotCoords = CheckStereoConstraints();
+        if(gotCoords) gotCoords = minimizeFourthDimension();
+        if(gotCoords) gotCoords = CheckStereoConstraints();
+      }
+      /*for (unsigned int attempt = 0; attempt < 10; ++attempt) {
         // place atoms randomly inside the box
         FOR_ATOMS_OF_MOL(a, _mol) {
           vector3 newPos;
@@ -1084,11 +1253,11 @@ namespace OpenBabel {
         if (converged)
           break; // no need to further iterate
       }
-
       finished = (CheckStereoConstraints() && CheckBounds());
 
       if (_d->debug && !finished)
         cerr << "Stereo unsatisfied, trying again" << endl;
+        */
     } // check for satisfied stereo
 
     _mol.Center();
@@ -1172,6 +1341,67 @@ namespace OpenBabel {
     GetConformers(mol);
 
     return true;
+  }
+
+  double DistGeomFunc::value(const TVector &x) {
+    unsigned int dim = 4;
+    const size_t size = x.size()/dim;
+    double ret = 0.0;
+    for(size_t i=0; i<size; ++i) {
+        for(size_t j=0; j<size; ++j) {
+            double v = 0.0;
+            double d2 = pow(x[i*dim]-x[j*dim], 2.0) 
+                + pow(x[i*dim+1]-x[j*dim+1], 2.0)
+                + pow(x[i*dim+2]-x[j*dim+2], 2.0)
+                + pow(x[i*dim+3]-x[j*dim+3], 2.0);
+            double d = sqrt(d2);
+            double ub = owner->GetUpperBounds(i, j);
+            double lb = owner->GetLowerBounds(i, j);
+            double u2 = ub * ub;
+            double l2 = lb * lb;
+            if (d > ub) v = d2/u2-1.0; 
+            else if (d < lb) v = (2.0*l2 / (l2+d2))-1.0;
+            /* cerr << "x.size(): " << x.size() << endl;
+               std::cerr << "i: " << i << ", j: " << j 
+                      << "d: " << d << ", ub: " << ub 
+                      << ", lb: " << lb << ", v2: " << v*v;
+            if(!(v > 0.0)) std::cerr << " (ignored)";
+            std::cerr << std::endl;*/
+            if(v > 0.0) ret += v*v;
+        }
+    }
+    std::cerr << "energy: " << ret << std::endl;
+    return ret;
+  }
+  void DistGeomFunc::gradient(const TVector &x, TVector &grad) {
+    unsigned int dim = 4;
+    for(size_t i=0; i<x.size()/dim; ++i) {
+      for(size_t j=0; j<x.size()/dim; ++j) {
+        double preFactor = 0.0;
+        double ub = owner->GetUpperBounds(i, j);
+        double lb = owner->GetUpperBounds(i, j);
+        double d2 = pow(x[i*dim]-x[j*dim], 2.0) 
+                   + pow(x[i*dim+1]-x[j*dim+1], 2.0)
+                   + pow(x[i*dim+2]-x[j*dim+2], 2.0)
+                   + pow(x[i*dim+3]-x[j*dim+3], 2.0);
+        double d = sqrt(d2);
+        if (d > ub) {
+          double u2 = ub * ub;
+          preFactor = 4.0 * (((d2)/u2) - 1.0) * (d/u2);
+        } else if(d < lb) {
+          double l2 = lb * lb;
+          double l2d2 = d2 + l2;
+          preFactor = 8.0 * l2 * d * (1.0 - 2.0 * l2 / l2d2) / (l2d2 * l2d2);
+        }
+        for (size_t k=0; k<dim; ++k) {
+          double g = 0;
+          if(d > 0) g = preFactor * (x[j*dim+k] - x[i*dim+k]) / d;
+          grad[i * dim + k] += g;
+          grad[j * dim + k] += -g;
+        }
+      }
+    }
+    cout << "gradient[0]: " << grad(0) << endl;
   }
 
 } // end namespace

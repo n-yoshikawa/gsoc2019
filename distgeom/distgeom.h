@@ -23,6 +23,12 @@ GNU General Public License for more details.
 #include <openbabel/babelconfig.h>
 #include <openbabel/mol.h>
 
+#include <openbabel/cppoptlib/meta.h>
+#include <openbabel/cppoptlib/problem.h>
+#include <openbabel/cppoptlib/solver/bfgssolver.h>
+
+#include <iostream>
+
 #ifndef OBAPI
   #define OBAPI
 #endif
@@ -37,6 +43,7 @@ namespace OpenBabel {
   class OBCisTransStereo;
 
   class OBAPI OBDistanceGeometry {
+    friend class DistgeomFunc;
   public:
     OBDistanceGeometry();
     OBDistanceGeometry(const OBMol &mol, bool useCurrentGeometry);
@@ -71,12 +78,21 @@ namespace OpenBabel {
      * \return Success or failure (e.g., bounds matrix does not match the number of atoms)
      */
     bool SetBoundsMatrix(const Eigen::MatrixXf bounds);
+    float GetUpperBounds(int i, int j);
+    float GetLowerBounds(int i, int j);
 
   private:
     OBMol                     _mol;
     std::vector<OBGenericData*> _vdata;
     DistanceGeometryPrivate  *_d;    //!< Internal private data, including bounds matrix
+    Eigen::VectorXd _coord;
 
+    unsigned int dim;
+
+    bool generateInitialCoords();
+    bool firstMinimization();
+    bool minimizeFourthDimension();
+    
     //! \brief Set the default upper bounds for the constraint matrix
     //! Upper bounds = maximum length of the molecule, or 1/2 the body diagonal in a unit cell
     void SetUpperBounds();
@@ -111,8 +127,16 @@ namespace OpenBabel {
     //! \return True if the bounds are met
     bool CheckBounds();
   };
-
-
+  class DistGeomFunc : public cppoptlib::Problem<double> {
+    OBDistanceGeometry* const owner;
+    public:
+      DistGeomFunc(OBDistanceGeometry* owner) : owner(owner) {}
+      using typename cppoptlib::Problem<double>::Scalar;
+      using typename cppoptlib::Problem<double>::TVector;
+  
+      double value(const TVector &x);
+      void gradient(const TVector &x, TVector &grad);
+  };
 }
 
 #endif
