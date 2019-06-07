@@ -1091,7 +1091,7 @@ namespace OpenBabel {
         sumSqD2 += d2;
       }
     }
-    cout << "sqMat:\n" << sqMat << endl;
+    //cout << "sqMat:\n" << sqMat << endl;
     sumSqD2 /= (N * N);
 
     Eigen::VectorXd sqD0i = Eigen::VectorXd::Zero(N);
@@ -1111,27 +1111,28 @@ namespace OpenBabel {
         T(j, i) = v;
       }
     }
-    cout << "T:\n" << T << endl;
+    //cout << "T:\n" << T << endl;
     unsigned int dim = 4;
-    // TODO: in case of N < dim
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(T);
     Eigen::VectorXd eigVals = es.eigenvalues();
     Eigen::MatrixXd eigVecs = es.eigenvectors();
-    cout << "eigVals:\n" << eigVals << endl;
-    cout << "eigVecs:\n" << eigVecs << endl;
+    //cout << "eigVals:\n" << eigVals << endl;
+    //cout << "eigVecs:\n" << eigVecs << endl;
 
     for (size_t i = 0; i < N; i++) {
       if(eigVals(i) > 0) eigVals(i) = sqrt(eigVals(i));
+      else eigVals(i) *= -1;
     }
-    cout << "eigVals (sqrt):\n" << eigVals << endl;
+    //cout << "eigVals (sqrt):\n" << eigVals << endl;
 
     _coord.resize(N * dim);
     for (size_t i = 0; i < N; i++) {
       for (size_t j = 0; j < dim; j++) {
-        _coord(i*dim + j) = eigVals(N-1-j) * eigVecs(j, N-1-i);
+        if(N-1-j >= 0) _coord(i*dim + j) = eigVals(N-1-j) * eigVecs(i, N-1-j);
+        else _coord(i*dim + j) = 0;
       }
     }
-    cout << "coord:\n" << _coord << endl;
+    //cout << "coord:\n" << _coord << endl;
     Eigen::MatrixXd distMat2(N, N);
     for (size_t i = 0; i < N; i++) {
       for (size_t j = 0; j < N; j++) {
@@ -1143,18 +1144,29 @@ namespace OpenBabel {
     }
     cout << "generated distance matrix" << endl;
     cout << distMat2 << endl;
+    for(size_t i=0; i<N; ++i) {
+      vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
+      OBAtom* a = _mol.GetAtom(i+1);
+      a->SetVector(v);
+    }
+    cout << "Result molecule" << endl;
+    OBConversion conv;
+    conv.SetOutStream(&cout);
+    conv.SetOutFormat("SDF");
+    conv.Write(&_mol);
+
     return true;
   }
 
 
   bool OBDistanceGeometry::firstMinimization(void) {
-    DistGeomFunc f(this);
+    /*DistGeomFunc f(this);
     cout << "Before optimization" << endl;
     cout << _coord << endl;
     cppoptlib::BfgsSolver<DistGeomFunc> solver;
     solver.minimize(f, _coord);
     cout << "After optimization" << endl;
-    cout << _coord << endl;
+    cout << _coord << endl;*/
     return true;
   }
 
