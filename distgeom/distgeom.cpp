@@ -41,7 +41,6 @@ GNU General Public License for more details.
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <cassert>
 #include <cmath>
 #include <random>
 
@@ -110,6 +109,29 @@ namespace OpenBabel {
     double maxBoxSize;
   };
 
+  class TetrahedralInfo {
+    int c;
+    vector<unsigned long> nbrs;
+    double lb, ub;
+    public:
+    TetrahedralInfo(int center, vector<unsigned long> neighbors,
+                    double lower_bound, double upper_bound) :
+                    c(center), nbrs(neighbors),
+                    lb(lower_bound), ub(upper_bound) {}
+    int GetCenter() {
+      return c;
+    }
+    vector<unsigned long> GetNeighbors() {
+      return nbrs;
+    }
+    double GetUpperBound() {
+      return ub;
+    }
+    double GetLowerBound() {
+      return lb;
+    }
+  };
+
   OBDistanceGeometry::OBDistanceGeometry(): _d(NULL) {}
 
   OBDistanceGeometry::OBDistanceGeometry(const OBMol &mol, bool useCurrentGeometry): _d(NULL)
@@ -137,6 +159,7 @@ namespace OpenBabel {
 
     dim = 4;
     _mol = mol;
+    _mol.DeleteHydrogens();
     _mol.SetDimension(3);
     _vdata = _mol.GetAllData(OBGenericDataType::StereoData);
     _d = new DistanceGeometryPrivate(mol.NumAtoms());
@@ -171,14 +194,38 @@ namespace OpenBabel {
       cerr << endl << " Smoothed Matrix\n";
       cerr << _d->bounds << endl;
     }
-    for(size_t i=0; i<mol.NumAtoms(); ++i) {
-      for(size_t j=0; j<mol.NumAtoms(); ++j) {
-        float ub = _d->GetUpperBounds(i, j);
-        float lb = _d->GetLowerBounds(i, j);
-        assert(ub > lb);
+
+    for (auto data = _vdata.begin(); data != _vdata.end(); ++data) {
+      if (((OBStereoBase*)*data)->GetType() == OBStereo::Tetrahedral) {
+        OBTetrahedralStereo *ts = dynamic_cast<OBTetrahedralStereo*>(*data);
+        OBTetrahedralStereo::Config config = ts->GetConfig();
+          cout << "tetrahedral stereo "
+               << "center: " << config.center << ", from: " << config.from << ", refs: "
+               << config.refs[0] << (config.refs[0] == OBStereo::ImplicitRef ? " (H)" : "") << ", "
+               << config.refs[1] << (config.refs[1] == OBStereo::ImplicitRef ? " (H)" : "") << ", "
+               << config.refs[2] << (config.refs[2] == OBStereo::ImplicitRef ? " (H)" : "") << " ";
+
+        vector<unsigned long> nbrs;
+        bool includeCenter = false;
+        // if H is included in neighbors, use chiral center instead.
+        for(auto &r : config.refs) {
+          if(r != OBStereo::ImplicitRef) nbrs.push_back(r);
+          else includeCenter = true;
+        }
+        nbrs.push_back(config.from);
+        if(includeCenter) nbrs.push_back(config.center);
+
+        if(config.winding == OBStereo::Clockwise) {
+          cout << " Clockwise" << endl;
+          TetrahedralInfo ti(config.center, nbrs, -100.0, -5.0);
+          _stereo.push_back(ti);
+        } else {
+          cout << " Counterclockwise" << endl;
+          TetrahedralInfo ti(config.center, nbrs, 5.0, 100.0);
+          _stereo.push_back(ti);
+        }
       }
     }
-
     return true;
   }
 
@@ -1078,7 +1125,7 @@ namespace OpenBabel {
         distMat(j, i) = v;
       }
     }
-    cout << "distMat:\n" << distMat << endl;
+    //cout << "distMat:\n" << distMat << endl;
     // metrix matrix
     // https://github.com/rdkit/rdkit/blob/master/Code/DistGeom/DistGeomUtils.cpp
     Eigen::MatrixXd sqMat(N, N);
@@ -1142,35 +1189,44 @@ namespace OpenBabel {
                          + pow(_coord(i*dim + 3)-_coord(j*dim + 3), 2.0));
       }
     }
-    cout << "generated distance matrix" << endl;
-    cout << distMat2 << endl;
-    for(size_t i=0; i<N; ++i) {
-      vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
-      OBAtom* a = _mol.GetAtom(i+1);
-      a->SetVector(v);
-    }
-    cout << "Result molecule" << endl;
-    OBConversion conv;
-    conv.SetOutStream(&cout);
-    conv.SetOutFormat("SDF");
-    conv.Write(&_mol);
-
     return true;
   }
 
 
   bool OBDistanceGeometry::firstMinimization(void) {
-    /*DistGeomFunc f(this);
-    cout << "Before optimization" << endl;
-    cout << _coord << endl;
+    OBConversion conv;
+    unsigned int N = _mol.NumAtoms();
+    for(size_t i=0; i<N; ++i) {
+      vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
+      OBAtom* a = _mol.GetAtom(i+1);
+      a->SetVector(v);
+    }
+    DistGeomFunc f(this);
+
+    cout << "initial value: " << f(_coord) << endl;
+    //cout << "Before optimization" << endl;
+    //conv.SetOutStream(&cout);
+    //conv.SetOutFormat("SDF");
+    //conv.Write(&_mol);
+
     cppoptlib::BfgsSolver<DistGeomFunc> solver;
     solver.minimize(f, _coord);
-    cout << "After optimization" << endl;
-    cout << _coord << endl;*/
+
+    cout << "final value: " << f(_coord) << endl;
+    for(size_t i=0; i<N; ++i) {
+      vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
+      OBAtom* a = _mol.GetAtom(i+1);
+      a->SetVector(v);
+    }
+    //cout << "After optimization" << endl;
+    //conv.SetOutStream(&cout);
+    //conv.SetOutFormat("SDF");
+    //conv.Write(&_mol);
     return true;
   }
 
   bool OBDistanceGeometry::minimizeFourthDimension(void) {
+    return true;
   }
 
   void OBDistanceGeometry::AddConformer()
@@ -1189,90 +1245,26 @@ namespace OpenBabel {
 
     unsigned int i,j;
     float lBounds, uBounds, dist;
-    bool finished = false;
-    int trial = 0;
-    while (!finished) {
-      trial++;
-      if(trial > 25) {
-        obErrorLog.ThrowError(__FUNCTION__, "Distance Geometry failed 25 times. Break.", obWarning);
+    bool success = false;
+    for (int trial = 0; trial < 25; trial++) {
+      generateInitialCoords();
+      firstMinimization();
+      //if(gotCoords) gotCoords = minimizeFourthDimension();
+      //if(gotCoords) gotCoords = CheckStereoConstraints();
+      cout << "stereo: " << (CheckStereoConstraints() ? "ok" : "ng")
+        << ", bounds: " << (CheckBounds() ? "ok" : "ng") << endl;
+      if(CheckStereoConstraints() && CheckBounds()) {
+        success = true;
         break;
       }
-      // https://github.com/rdkit/rdkit/blob/8524652a86f8c050239bde3bf61f4dff642e4c7a/Code/GraphMol/DistGeomHelpers/Embedder.cpp#L603
-      bool gotCoords = false;
-      unsigned int iter = 0;
-      while ((gotCoords == false) && (iter < 100)) {
-        iter++;
-        gotCoords = generateInitialCoords();
-        if(gotCoords) gotCoords = firstMinimization();
-        if(gotCoords) gotCoords = CheckStereoConstraints();
-        if(gotCoords) gotCoords = minimizeFourthDimension();
-        if(gotCoords) gotCoords = CheckStereoConstraints();
-      }
-      /*for (unsigned int attempt = 0; attempt < 10; ++attempt) {
-        // place atoms randomly inside the box
-        FOR_ATOMS_OF_MOL(a, _mol) {
-          vector3 newPos;
-          newPos.randomUnitVector();
-          newPos = newPos*_d->maxBoxSize;
-          a->SetVector(newPos);
-        }
-        //CorrectStereoConstraints();
-        if (CheckStereoConstraints())
-          break; // no need to continue
-        else if (_d->debug)
-          cerr << " AddConformer: new initial geometry " << endl;
-      }
-
-      // Iterate to ensure all atoms satisfy the bounds matrix
-      OBAtom *a, *b;
-      float lambda;
-      const unsigned int maxCount = 100;
-      const float damp = 1.0 / (maxCount + 1.0);
-      bool converged;
-      for (unsigned int count = 0; count < maxCount; ++count) {
-        lambda = 1.0 - damp*count; // damp the oscillations each cycle
-        converged = true; // unless we swap atoms
-        // either move atoms or correct stereo constraints
-        // remember atom indexes from 1
-        for (i = 1; i <= _mol.NumAtoms(); ++i) {
-          a = _mol.GetAtom(i);
-          for (j = i + 1; j <= _mol.NumAtoms(); ++j) {
-            b = _mol.GetAtom(j);
-
-            // Compare the current distance to the lower and upper bounds
-            dist = a->GetDistance(b);
-            lBounds = _d->GetLowerBounds(i - 1, j - 1);
-            uBounds = _d->GetUpperBounds(i - 1, j - 1);
-
-            if (dist < lBounds) {
-              vector3 delta = a->GetVector() - b->GetVector();
-              float scale = lambda * 0.5 * (lBounds - dist)/dist;
-              delta *= scale;
-              a->SetVector(a->GetVector() + delta);
-              b->SetVector(b->GetVector() - delta);
-              converged = false;
-            } else if (dist > uBounds) {
-              vector3 delta = a->GetVector() - b->GetVector();
-              float scale = lambda * 0.5 * (uBounds - dist)/dist;
-              delta *= scale;
-              a->SetVector(a->GetVector() + delta);
-              b->SetVector(b->GetVector() - delta);
-              converged = false;
-            } // end distances outside range
-
-          } // end j
-        } // end looping through all pairs
-        if (converged)
-          break; // no need to further iterate
-      }
-      finished = (CheckStereoConstraints() && CheckBounds());
-
-      if (_d->debug && !finished)
+      if (_d->debug && !success)
         cerr << "Stereo unsatisfied, trying again" << endl;
-        */
-    } // check for satisfied stereo
-
+    }
+    if(!success) {
+      obErrorLog.ThrowError(__FUNCTION__, "Distance Geometry failed.", obWarning);
+    }
     _mol.Center();
+    _mol.AddHydrogens();
   }
 
   bool OBDistanceGeometry::CheckBounds()
@@ -1359,6 +1351,7 @@ namespace OpenBabel {
     unsigned int dim = 4;
     const size_t size = x.size()/dim;
     double ret = 0.0;
+    // calculate distance error
     for(size_t i=0; i<size; ++i) {
         for(size_t j=0; j<size; ++j) {
             double v = 0.0;
@@ -1373,25 +1366,42 @@ namespace OpenBabel {
             double l2 = lb * lb;
             if (d > ub) v = d2/u2-1.0; 
             else if (d < lb) v = (2.0*l2 / (l2+d2))-1.0;
-            /* cerr << "x.size(): " << x.size() << endl;
-               std::cerr << "i: " << i << ", j: " << j 
-                      << "d: " << d << ", ub: " << ub 
-                      << ", lb: " << lb << ", v2: " << v*v;
-            if(!(v > 0.0)) std::cerr << " (ignored)";
-            std::cerr << std::endl;*/
             if(v > 0.0) ret += v*v;
         }
     }
-    std::cerr << "energy: " << ret << std::endl;
+    // calculate distance error
+    for(auto &tetra : owner->_stereo) {
+      vector<unsigned long> nbrs = tetra.GetNeighbors();
+      Eigen::Vector3d v1(x(nbrs[0] * dim), x(nbrs[0]*dim+1), x(nbrs[0]*dim+2));
+      Eigen::Vector3d v2(x(nbrs[1] * dim), x(nbrs[1]*dim+1), x(nbrs[1]*dim+2));
+      Eigen::Vector3d v3(x(nbrs[2] * dim), x(nbrs[2]*dim+1), x(nbrs[2]*dim+2));
+      Eigen::Vector3d v4(x(nbrs[3] * dim), x(nbrs[3]*dim+1), x(nbrs[3]*dim+2));
+      double vol = (v1-v4).dot((v2-v4).cross(v3-v4));
+      double lb = tetra.GetLowerBound();
+      double ub = tetra.GetUpperBound();
+      if(vol < lb) ret += (vol - lb) * (vol - lb);
+      else if(vol > ub) ret += (vol - ub) * (vol - ub);
+      //cout << "v1 (" << nbrs[0] << "):" << v1.transpose() << endl;
+      //cout << "v2 (" << nbrs[1] << "):" << v2.transpose() << endl;
+      //cout << "v3 (" << nbrs[2] << "):" << v3.transpose() << endl;
+      //cout << "v4 (" << nbrs[3] << "):" << v4.transpose() << endl;
+      cout << "vol: " << vol << ", lb: " << lb << ", ub: " << ub << endl;
+    }
+
     return ret;
   }
   void DistGeomFunc::gradient(const TVector &x, TVector &grad) {
     unsigned int dim = 4;
-    for(size_t i=0; i<x.size()/dim; ++i) {
-      for(size_t j=0; j<x.size()/dim; ++j) {
+    for (size_t i=0; i<grad.rows(); i++) {
+      grad[i] = 0;
+    }
+    // gradient for distance error
+    unsigned int N = x.size() / dim;
+    for(size_t i=0; i<N; ++i) {
+      for(size_t j=0; j<N; ++j) {
         double preFactor = 0.0;
         double ub = owner->GetUpperBounds(i, j);
-        double lb = owner->GetUpperBounds(i, j);
+        double lb = owner->GetLowerBounds(i, j);
         double d2 = pow(x[i*dim]-x[j*dim], 2.0) 
                    + pow(x[i*dim+1]-x[j*dim+1], 2.0)
                    + pow(x[i*dim+2]-x[j*dim+2], 2.0)
@@ -1407,13 +1417,69 @@ namespace OpenBabel {
         }
         for (size_t k=0; k<dim; ++k) {
           double g = 0;
-          if(d > 0) g = preFactor * (x[j*dim+k] - x[i*dim+k]) / d;
+          if(d > 0) g = preFactor * (x[i*dim+k] - x[j*dim+k]) / d;
           grad[i * dim + k] += g;
           grad[j * dim + k] += -g;
         }
       }
     }
-    cout << "gradient[0]: " << grad(0) << endl;
+    // gradient for chiral error
+    for(auto &tetra : owner->_stereo) {
+      vector<unsigned long> nbrs = tetra.GetNeighbors();
+      unsigned long idx1, idx2, idx3, idx4;
+      idx1 = nbrs[0];
+      idx2 = nbrs[1];
+      idx3 = nbrs[2];
+      idx4 = nbrs[3];
+
+      Eigen::Vector3d v1(x(idx1 * dim), x(idx1 * dim+1), x(idx1 * dim+2));
+      Eigen::Vector3d v2(x(idx2 * dim), x(idx2 * dim+1), x(idx2 * dim+2));
+      Eigen::Vector3d v3(x(idx3 * dim), x(idx3 * dim+1), x(idx3 * dim+2));
+      Eigen::Vector3d v4(x(idx4 * dim), x(idx4 * dim+1), x(idx4 * dim+2));
+      v1 -= v4;
+      v2 -= v4;
+      v3 -= v4;
+
+      double vol = v1.dot(v2.cross(v3));
+      double lb = tetra.GetLowerBound();
+      double ub = tetra.GetUpperBound();
+
+      double preFactor;
+      if (vol < lb) preFactor = vol - lb;
+      else if (vol > ub) preFactor = vol - ub;
+      else continue;
+
+      // RDKit: Code/DistGeom/ChiralViolationContrib.cpp
+      grad[dim * idx1] += preFactor * (v2.y() * v3.z() - v3.y() * v2.z());
+      grad[dim * idx1 + 1] += preFactor * (v3.x() * v2.z() - v2.x() * v3.z());
+      grad[dim * idx1 + 2] += preFactor * (v2.x() * v3.y() - v3.x() * v2.y());
+
+      grad[dim * idx2] += preFactor * (v3.y() * v1.z() - v3.z() * v1.y());
+      grad[dim * idx2 + 1] += preFactor * (v3.z() * v1.x() - v3.z() * v1.z());
+      grad[dim * idx2 + 2] += preFactor * (v3.x() * v1.y() - v3.y() * v1.x());
+
+      grad[dim * idx3] += preFactor * (v2.z() * v1.y() - v2.y() * v1.z());
+      grad[dim * idx3 + 1] += preFactor * (v2.x() * v1.z() - v2.z() * v1.x());
+      grad[dim * idx3 + 2] += preFactor * (v2.y() * v1.x() - v2.x() * v1.y());
+
+      grad[dim * idx4] += 
+        preFactor *
+        (x[idx1 * dim + 2] * (x[idx2 * dim + 1] - x[idx3 * dim + 1]) + 
+         x[idx2 * dim + 2] * (x[idx3 * dim + 1] - x[idx1 * dim + 1]) + 
+         x[idx3 * dim + 2] * (x[idx1 * dim + 1] - x[idx2 * dim + 1]));
+
+      grad[dim * idx4 + 1] += 
+        preFactor *
+        (x[idx1 * dim] * (x[idx2 * dim + 2] - x[idx3 * dim + 2]) + 
+         x[idx2 * dim] * (x[idx3 * dim + 2] - x[idx1 * dim + 2]) + 
+         x[idx3 * dim] * (x[idx1 * dim + 2] - x[idx2 * dim + 2]));
+
+      grad[dim * idx4 + 2] += 
+        preFactor *
+        (x[idx1 * dim + 1] * (x[idx2 * dim] - x[idx3 * dim]) + 
+         x[idx2 * dim + 1] * (x[idx3 * dim] - x[idx1 * dim]) + 
+         x[idx3 * dim + 1] * (x[idx1 * dim] - x[idx2 * dim]));
+    }
   }
 
 } // end namespace

@@ -41,6 +41,7 @@ namespace OpenBabel {
 
   class DistanceGeometryPrivate;
   class OBCisTransStereo;
+  class TetrahedralInfo;
 
   class OBAPI OBDistanceGeometry {
     friend class DistgeomFunc;
@@ -80,12 +81,12 @@ namespace OpenBabel {
     bool SetBoundsMatrix(const Eigen::MatrixXf bounds);
     float GetUpperBounds(int i, int j);
     float GetLowerBounds(int i, int j);
-
+    std::vector<TetrahedralInfo>  _stereo;       //!< Internal private data, including stereo info
   private:
     OBMol                     _mol;
     std::vector<OBGenericData*> _vdata;
     DistanceGeometryPrivate  *_d;    //!< Internal private data, including bounds matrix
-    Eigen::VectorXd _coord;
+    Eigen::VectorXd _coord;          // one-dimensional vector containing coordinates of atoms
 
     unsigned int dim;
 

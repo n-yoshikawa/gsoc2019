@@ -1,4 +1,49 @@
 # distgeom
+## 2019/06/12
+Distance geometry including chiral error started to work.
+```
+$ obabel -ican -:"N[C@@H](C)C(=O)O" -O test.sdf --gen3d dg
+(long log)
+$ obabel test.sdf -oinchi
+InChI=1S/C3H7NO2/c1-2(4)3(5)6/h2H,4H2,1H3,(H,5,6)/t2-/m0/s1
+1 molecule converted
+$ obabel -ican -:"N[C@@H](C)C(=O)O" -oinchi               
+InChI=1S/C3H7NO2/c1-2(4)3(5)6/h2H,4H2,1H3,(H,5,6)/t2-/m0/s1
+1 molecule converted
+```
+```
+$ obabel -ican -:"N[C@H](C)C(=O)O" -O test.sdf --gen3d dg
+(long log)
+$ obabel test.sdf -oinchi
+InChI=1S/C3H7NO2/c1-2(4)3(5)6/h2H,4H2,1H3,(H,5,6)/t2-/m1/s1
+1 molecule converted
+$ obabel -ican -:"N[C@H](C)C(=O)O" -oinchi
+InChI=1S/C3H7NO2/c1-2(4)3(5)6/h2H,4H2,1H3,(H,5,6)/t2-/m1/s1
+1 molecule converted
+```
+```
+$ obabel -ican -:"O[C@H]1CCCC[C@H]1O" -O test.sdf --gen3d dg
+(long log)
+$ obabel test.sdf -oinchi
+InChI=1S/C6H12O2/c7-5-3-1-2-4-6(5)8/h5-8H,1-4H2/t5-,6+
+1 molecule converted
+$ obabel -ican -:"O[C@H]1CCCC[C@H]1O" -oinchi
+InChI=1S/C6H12O2/c7-5-3-1-2-4-6(5)8/h5-8H,1-4H2/t5-,6+
+```
+```
+$ obabel -ican -:"C1C[C@H]2CCCC[C@H]2CC1" -O test.sdf --gen3d dg
+(long log)
+$ obabel test.sdf -oinchi
+==============================
+*** Open Babel Warning  in InChI code
+  #1 :Omitted undefined stereo
+InChI=1S/C10H18/c1-2-6-10-8-4-3-7-9(10)5-1/h9-10H,1-8H2
+1 molecule converted
+$ obabel -ican -:"C1C[C@H]2CCCC[C@H]2CC1" -oinchi
+InChI=1S/C10H18/c1-2-6-10-8-4-3-7-9(10)5-1/h9-10H,1-8H2/t9-,10+
+1 molecule converted
+```
+
 ## 2019/06/08
 BFGS (only distance contraint) worked.
 ```
