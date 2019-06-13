@@ -1,4 +1,22 @@
 # distgeom
+## 2019/06/13
+Debug and evaluate using initial 1000 molecules in the Platinum dataset.
+Run distance geometry (without fragment knowledge) and run MMFF (med).
+```
+$ time obabel platinum1000.smi -O platinum1000-obabel-dg2.sdf --gen3d dg
+real	3m22.329s
+user	3m6.751s
+sys	0m15.528s
+$ python stat-result.py eval-ob-new-dg.csv 
+RMSD:		 1.953698364798107
+Bond error:	 0.1600978932226922
+Angle error:	 12.953547681617396
+Torsion error:	 61.45940387853891
+TFD:		 0.6780934483991995
+Stereo correct:	 87.1
+```
+
+The result was not good in terms of all metrics compared to the fragment-based builder.
 ## 2019/06/12
 Distance geometry including chiral error started to work.
 ```

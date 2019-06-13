@@ -199,11 +199,11 @@ namespace OpenBabel {
       if (((OBStereoBase*)*data)->GetType() == OBStereo::Tetrahedral) {
         OBTetrahedralStereo *ts = dynamic_cast<OBTetrahedralStereo*>(*data);
         OBTetrahedralStereo::Config config = ts->GetConfig();
-          cout << "tetrahedral stereo "
+          /*cout << "tetrahedral stereo "
                << "center: " << config.center << ", from: " << config.from << ", refs: "
                << config.refs[0] << (config.refs[0] == OBStereo::ImplicitRef ? " (H)" : "") << ", "
                << config.refs[1] << (config.refs[1] == OBStereo::ImplicitRef ? " (H)" : "") << ", "
-               << config.refs[2] << (config.refs[2] == OBStereo::ImplicitRef ? " (H)" : "") << " ";
+               << config.refs[2] << (config.refs[2] == OBStereo::ImplicitRef ? " (H)" : "") << " ";*/
 
         vector<unsigned long> nbrs;
         bool includeCenter = false;
@@ -212,15 +212,17 @@ namespace OpenBabel {
           if(r != OBStereo::ImplicitRef) nbrs.push_back(r);
           else includeCenter = true;
         }
-        nbrs.push_back(config.from);
+        if(config.from != OBStereo::ImplicitRef) nbrs.push_back(config.from);
+        else includeCenter = true;
+
         if(includeCenter) nbrs.push_back(config.center);
 
         if(config.winding == OBStereo::Clockwise) {
-          cout << " Clockwise" << endl;
+          //cout << " Clockwise" << endl;
           TetrahedralInfo ti(config.center, nbrs, -100.0, -5.0);
           _stereo.push_back(ti);
         } else {
-          cout << " Counterclockwise" << endl;
+          //cout << " Counterclockwise" << endl;
           TetrahedralInfo ti(config.center, nbrs, 5.0, 100.0);
           _stereo.push_back(ti);
         }
@@ -1203,7 +1205,7 @@ namespace OpenBabel {
     }
     DistGeomFunc f(this);
 
-    cout << "initial value: " << f(_coord) << endl;
+    //cout << "initial value: " << f(_coord) << endl;
     //cout << "Before optimization" << endl;
     //conv.SetOutStream(&cout);
     //conv.SetOutFormat("SDF");
@@ -1212,7 +1214,7 @@ namespace OpenBabel {
     cppoptlib::BfgsSolver<DistGeomFunc> solver;
     solver.minimize(f, _coord);
 
-    cout << "final value: " << f(_coord) << endl;
+    //cout << "final value: " << f(_coord) << endl;
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
       OBAtom* a = _mol.GetAtom(i+1);
@@ -1251,8 +1253,8 @@ namespace OpenBabel {
       firstMinimization();
       //if(gotCoords) gotCoords = minimizeFourthDimension();
       //if(gotCoords) gotCoords = CheckStereoConstraints();
-      cout << "stereo: " << (CheckStereoConstraints() ? "ok" : "ng")
-        << ", bounds: " << (CheckBounds() ? "ok" : "ng") << endl;
+      /*cout << "stereo: " << (CheckStereoConstraints() ? "ok" : "ng")
+        << ", bounds: " << (CheckBounds() ? "ok" : "ng") << endl;*/
       if(CheckStereoConstraints() && CheckBounds()) {
         success = true;
         break;
@@ -1348,6 +1350,7 @@ namespace OpenBabel {
   }
 
   double DistGeomFunc::value(const TVector &x) {
+    //cout << "calculate value" << endl;
     unsigned int dim = 4;
     const size_t size = x.size()/dim;
     double ret = 0.0;
@@ -1372,6 +1375,7 @@ namespace OpenBabel {
     // calculate distance error
     for(auto &tetra : owner->_stereo) {
       vector<unsigned long> nbrs = tetra.GetNeighbors();
+      //cout << "nbrs: " << nbrs[0] << ", " << nbrs[1] << ", " << nbrs[2] << ", " << nbrs[3] << endl;
       Eigen::Vector3d v1(x(nbrs[0] * dim), x(nbrs[0]*dim+1), x(nbrs[0]*dim+2));
       Eigen::Vector3d v2(x(nbrs[1] * dim), x(nbrs[1]*dim+1), x(nbrs[1]*dim+2));
       Eigen::Vector3d v3(x(nbrs[2] * dim), x(nbrs[2]*dim+1), x(nbrs[2]*dim+2));
@@ -1385,12 +1389,13 @@ namespace OpenBabel {
       //cout << "v2 (" << nbrs[1] << "):" << v2.transpose() << endl;
       //cout << "v3 (" << nbrs[2] << "):" << v3.transpose() << endl;
       //cout << "v4 (" << nbrs[3] << "):" << v4.transpose() << endl;
-      cout << "vol: " << vol << ", lb: " << lb << ", ub: " << ub << endl;
+      //cout << "vol: " << vol << ", lb: " << lb << ", ub: " << ub << endl;
     }
 
     return ret;
   }
   void DistGeomFunc::gradient(const TVector &x, TVector &grad) {
+    //cout << "calculate gradient" << endl;
     unsigned int dim = 4;
     for (size_t i=0; i<grad.rows(); i++) {
       grad[i] = 0;
@@ -1431,6 +1436,7 @@ namespace OpenBabel {
       idx2 = nbrs[1];
       idx3 = nbrs[2];
       idx4 = nbrs[3];
+      //cout << "nbrs: " << idx1 << ", " << idx2 << ", " << idx3 << ", " << idx4 << endl;
 
       Eigen::Vector3d v1(x(idx1 * dim), x(idx1 * dim+1), x(idx1 * dim+2));
       Eigen::Vector3d v2(x(idx2 * dim), x(idx2 * dim+1), x(idx2 * dim+2));
