@@ -1,4 +1,15 @@
 # distgeom
+## 2019/06/14
+Implemented 4th dimentional penalty minimization.
+It contributed smaller error.
+```
+RMSD:		 1.784862089493353
+Bond error:	 0.046846102579575444
+Angle error:	 2.32028908052611
+Torsion error:	 44.62221425930382
+TFD:		 0.3329742280797641
+Stereo correct:	 88.0
+```
 ## 2019/06/13
 Debug and evaluate using initial 1000 molecules in the Platinum dataset.
 Run distance geometry (without fragment knowledge) and run MMFF (med).

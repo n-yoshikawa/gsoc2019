@@ -138,6 +138,16 @@ namespace OpenBabel {
       double value(const TVector &x);
       void gradient(const TVector &x, TVector &grad);
   };
+  class DistGeomFuncInclude4D : public cppoptlib::Problem<double> {
+    OBDistanceGeometry* const owner;
+    public:
+      DistGeomFuncInclude4D(OBDistanceGeometry* owner) : owner(owner) {}
+      using typename cppoptlib::Problem<double>::Scalar;
+      using typename cppoptlib::Problem<double>::TVector;
+  
+      double value(const TVector &x);
+      void gradient(const TVector &x, TVector &grad);
+  };
 }
 
 #endif
