@@ -160,14 +160,14 @@ namespace OpenBabel {
     cout << "processing: ";
     OBConversion conv;
     conv.SetOutStream(&cout);
-    conv.SetOutFormat("can");
+    conv.SetOutFormat("smi");
 
     dim = 4;
     _mol = mol;
 
     conv.Write(&_mol);
 
-    _mol.DeleteHydrogens();
+    //_mol.DeleteHydrogens();
     _mol.SetDimension(3);
     _vdata = _mol.GetAllData(OBGenericDataType::StereoData);
     _d = new DistanceGeometryPrivate(mol.NumAtoms());
@@ -208,25 +208,37 @@ namespace OpenBabel {
     FOR_ATOMS_OF_MOL(atom, _mol) {
       if (facade.HasTetrahedralStereo(atom->GetId())) {
         OBTetrahedralStereo *ts = facade.GetTetrahedralStereo(atom->GetId());
-        std::cout << (*ts) << std::endl;
+        //std::cout << (*ts) << std::endl;
         OBTetrahedralStereo::Config config = ts->GetConfig();
         vector<unsigned long> nbrs;
-        bool includeCenter = false;
         // if H is included in neighbors, use chiral center instead.
+        bool includeCenter = false;
+        if(config.from != OBStereo::ImplicitRef) nbrs.push_back(config.from);
+        else nbrs.push_back(config.from);//includeCenter = true;
+
         for(auto &r : config.refs) {
           if(r != OBStereo::ImplicitRef) nbrs.push_back(r);
-          else includeCenter = true;
+          else nbrs.push_back(r); //includeCenter = true;
         }
-        if(config.from != OBStereo::ImplicitRef) nbrs.push_back(config.from);
-        else includeCenter = true;
 
         if(includeCenter) nbrs.push_back(config.center);
+
         if(config.winding == OBStereo::Clockwise) {
           TetrahedralInfo ti(config.center, nbrs, -100.0, -5.0);
           _stereo.push_back(ti);
+          cout << "Clockwise: [" 
+            << nbrs[0] << "->" << _mol.GetAtom(nbrs[0]+1)->GetAtomicNum() << ", "
+            << nbrs[1] << "->" << _mol.GetAtom(nbrs[1]+1)->GetAtomicNum() << ", "
+            << nbrs[2] << "->" << _mol.GetAtom(nbrs[2]+1)->GetAtomicNum() << ", "
+            << nbrs[3] << "->" << _mol.GetAtom(nbrs[3]+1)->GetAtomicNum() << "] " << endl;
         } else {
           TetrahedralInfo ti(config.center, nbrs, 5.0, 100.0);
           _stereo.push_back(ti);
+          cout << "Counterclockwise: [" 
+            << nbrs[0] << "->" << _mol.GetAtom(nbrs[0]+1)->GetAtomicNum() << ", "
+            << nbrs[1] << "->" << _mol.GetAtom(nbrs[1]+1)->GetAtomicNum() << ", "
+            << nbrs[2] << "->" << _mol.GetAtom(nbrs[2]+1)->GetAtomicNum() << ", "
+            << nbrs[3] << "->" << _mol.GetAtom(nbrs[3]+1)->GetAtomicNum() << "] " << endl;
         }
       }
     }
@@ -1207,7 +1219,7 @@ namespace OpenBabel {
     }
     DistGeomFunc f(this);
 
-    cout << "initial value: " << f(_coord) << endl;
+    //cout << "initial value: " << f(_coord) << endl;
     //cout << "Before optimization" << endl;
     //conv.SetOutStream(&cout);
     //conv.SetOutFormat("SDF");
@@ -1216,7 +1228,7 @@ namespace OpenBabel {
     cppoptlib::BfgsSolver<DistGeomFunc> solver;
     solver.minimize(f, _coord);
 
-    cout << "final value: " << f(_coord) << endl;
+    //cout << "final value: " << f(_coord) << endl;
     //cout << "final coord: " << _coord.transpose() << endl;
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
@@ -1240,7 +1252,7 @@ namespace OpenBabel {
     }
     DistGeomFuncInclude4D f(this);
 
-    cout << "initial value (include4D): " << f(_coord) << endl;
+    //cout << "initial value (include4D): " << f(_coord) << endl;
     //cout << "initial coord: " << _coord.transpose() << endl;
     //cout << "Before optimization" << endl;
     //conv.SetOutStream(&cout);
@@ -1250,7 +1262,7 @@ namespace OpenBabel {
     cppoptlib::BfgsSolver<DistGeomFuncInclude4D> solver;
     solver.minimize(f, _coord);
 
-    cout << "final value (include4D): " << f(_coord) << endl;
+    //cout << "final value (include4D): " << f(_coord) << endl;
     //cout << "final coord: " << _coord.transpose() << endl;
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
@@ -1281,14 +1293,14 @@ namespace OpenBabel {
     unsigned int i,j;
     float lBounds, uBounds, dist;
     bool success = false;
-    unsigned int maxIter = 1;// * _mol.NumAtoms();
+    unsigned int maxIter = 1 * _mol.NumAtoms();
     for (unsigned int trial = 0; trial < maxIter; trial++) {
       generateInitialCoords();
       firstMinimization();
       minimizeFourthDimension();
       CheckStereoConstraints();
-      //cout << "stereo: " << (CheckStereoConstraints() ? "ok" : "ng")
-      //  << ", bounds: " << (CheckBounds() ? "ok" : "ng") << endl;
+      cout << "stereo: " << (CheckStereoConstraints() ? "ok" : "ng")
+        << ", bounds: " << (CheckBounds() ? "ok" : "ng") << endl;
       if(CheckStereoConstraints() && CheckBounds()) {
         success = true;
         break;
@@ -1299,7 +1311,7 @@ namespace OpenBabel {
     if(!success) {
       obErrorLog.ThrowError(__FUNCTION__, "Distance Geometry failed.", obWarning);
     }
-    _mol.AddHydrogens();
+    //_mol.AddHydrogens();
   }
 
   bool OBDistanceGeometry::CheckBounds()
@@ -1424,7 +1436,7 @@ namespace OpenBabel {
       //cout << "v2 (" << nbrs[1] << "):" << v2.transpose() << endl;
       //cout << "v3 (" << nbrs[2] << "):" << v3.transpose() << endl;
       //cout << "v4 (" << nbrs[3] << "):" << v4.transpose() << endl;
-      cout << "vol: " << vol << ", lb: " << lb << ", ub: " << ub << endl;
+      //cout << "vol: " << vol << ", lb: " << lb << ", ub: " << ub << endl;
     }
 
     //cout << "x: " << x.transpose() << endl;

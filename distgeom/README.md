@@ -1,4 +1,16 @@
 # distgeom
+## 2019/06/17
+I found treating hydrogens explicitly greatly improves stereo accuracy.
+```
+RMSD:		 1.761661062184551
+Bond error:	 0.047160183218586865
+Angle error:	 2.365066621227538
+Torsion error:	 44.02308213424224
+TFD:		 0.3398617453755661
+Stereo correct:	 99.60552268244575
+```
+
+Segmentation fault occurs because of implicit hydrogens. I need to fix.
 ## 2019/06/14
 Implemented 4th dimentional penalty minimization.
 It contributed smaller error.
