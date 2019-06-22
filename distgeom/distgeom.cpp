@@ -43,6 +43,7 @@ GNU General Public License for more details.
 #include <string>
 #include <cmath>
 #include <random>
+#include <chrono>
 
 #include <Eigen/Eigenvalues>
 
@@ -105,9 +106,7 @@ namespace OpenBabel {
     }
 
     Eigen::MatrixXf bounds, preMet;
-    bool debug;
-    double maxBoxSize;
-  };
+    bool debug; double maxBoxSize; };
 
   class TetrahedralInfo {
     int c;
@@ -157,17 +156,16 @@ namespace OpenBabel {
       delete _d;
     // TODO: add IsSetupNeeded() like OBForceField to prevent duplication of work
     //
-    cout << "processing: ";
+    /*cout << "processing: ";
     OBConversion conv;
     conv.SetOutStream(&cout);
-    conv.SetOutFormat("smi");
+    conv.SetOutFormat("smi");*/
 
     dim = 4;
     _mol = mol;
 
-    conv.Write(&_mol);
+    //conv.Write(&_mol);
 
-    //_mol.DeleteHydrogens();
     _mol.SetDimension(3);
     _vdata = _mol.GetAllData(OBGenericDataType::StereoData);
     _d = new DistanceGeometryPrivate(mol.NumAtoms());
@@ -211,17 +209,16 @@ namespace OpenBabel {
         //std::cout << (*ts) << std::endl;
         OBTetrahedralStereo::Config config = ts->GetConfig();
         vector<unsigned long> nbrs;
-        // if H is included in neighbors, use chiral center instead.
-        bool includeCenter = false;
-        if(config.from != OBStereo::ImplicitRef) nbrs.push_back(config.from);
-        else nbrs.push_back(config.from);//includeCenter = true;
 
+        nbrs.push_back(config.from);
         for(auto &r : config.refs) {
-          if(r != OBStereo::ImplicitRef) nbrs.push_back(r);
-          else nbrs.push_back(r); //includeCenter = true;
+          nbrs.push_back(r);
         }
 
-        if(includeCenter) nbrs.push_back(config.center);
+        // This is required to avoid segfault (why?)
+        for(auto &n : nbrs) {
+          if (n > _mol.NumAtoms()) n = config.center;
+        }
 
         if(config.winding == OBStereo::Clockwise) {
           TetrahedralInfo ti(config.center, nbrs, -100.0, -5.0);
@@ -240,7 +237,27 @@ namespace OpenBabel {
             << nbrs[2] << "->" << _mol.GetAtom(nbrs[2]+1)->GetAtomicNum() << ", "
             << nbrs[3] << "->" << _mol.GetAtom(nbrs[3]+1)->GetAtomicNum() << "] " << endl;*/
         }
-      }
+      } /*else {
+        if (atom->MemberOfRingCount() >= 2) {
+          vector<unsigned long> nbrs;
+          FOR_NBORS_OF_ATOM(n, &*atom) {
+            nbrs.push_back(n->GetIdx());
+          }
+          for(auto &n : nbrs) {
+            //cout << n << " ";
+          }
+          cout << endl;
+          if(nbrs.size() == 4) {
+            TetrahedralInfo ti(atom->GetIdx(), nbrs, 5.0, 100.0);
+            _stereo.push_back(ti);
+            cout << "Planar: [" 
+            << nbrs[0] << "->" << _mol.GetAtom(nbrs[0]+1)->GetAtomicNum() << ", "
+            << nbrs[1] << "->" << _mol.GetAtom(nbrs[1]+1)->GetAtomicNum() << ", "
+            << nbrs[2] << "->" << _mol.GetAtom(nbrs[2]+1)->GetAtomicNum() << ", "
+            << nbrs[3] << "->" << _mol.GetAtom(nbrs[3]+1)->GetAtomicNum() << "] " << endl;
+          }
+        }
+      }*/
     }
     return true;
   }
@@ -1141,7 +1158,6 @@ namespace OpenBabel {
         distMat(j, i) = v;
       }
     }
-    //cout << "distMat:\n" << distMat << endl;
     // metrix matrix
     // https://github.com/rdkit/rdkit/blob/master/Code/DistGeom/DistGeomUtils.cpp
     Eigen::MatrixXd sqMat(N, N);
@@ -1154,7 +1170,6 @@ namespace OpenBabel {
         sumSqD2 += d2;
       }
     }
-    //cout << "sqMat:\n" << sqMat << endl;
     sumSqD2 /= (N * N);
 
     Eigen::VectorXd sqD0i = Eigen::VectorXd::Zero(N);
@@ -1174,19 +1189,15 @@ namespace OpenBabel {
         T(j, i) = v;
       }
     }
-    //cout << "T:\n" << T << endl;
     unsigned int dim = 4;
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(T);
     Eigen::VectorXd eigVals = es.eigenvalues();
     Eigen::MatrixXd eigVecs = es.eigenvectors();
-    //cout << "eigVals:\n" << eigVals << endl;
-    //cout << "eigVecs:\n" << eigVecs << endl;
 
     for (size_t i = 0; i < N; i++) {
       if(eigVals(i) > 0) eigVals(i) = sqrt(eigVals(i));
       else eigVals(i) *= -1;
     }
-    //cout << "eigVals (sqrt):\n" << eigVals << endl;
 
     _coord.resize(N * dim);
     for (size_t i = 0; i < N; i++) {
@@ -1195,7 +1206,6 @@ namespace OpenBabel {
         else _coord(i*dim + j) = 0;
       }
     }
-    //cout << "coord:\n" << _coord << endl;
     Eigen::MatrixXd distMat2(N, N);
     for (size_t i = 0; i < N; i++) {
       for (size_t j = 0; j < N; j++) {
@@ -1210,7 +1220,7 @@ namespace OpenBabel {
 
 
   bool OBDistanceGeometry::firstMinimization(void) {
-    OBConversion conv;
+    //OBConversion conv;
     unsigned int N = _mol.NumAtoms();
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
@@ -1220,30 +1230,21 @@ namespace OpenBabel {
     DistGeomFunc f(this);
 
     //cout << "initial value: " << f(_coord) << endl;
-    //cout << "Before optimization" << endl;
-    //conv.SetOutStream(&cout);
-    //conv.SetOutFormat("SDF");
-    //conv.Write(&_mol);
 
     cppoptlib::BfgsSolver<DistGeomFunc> solver;
     solver.minimize(f, _coord);
 
     //cout << "final value: " << f(_coord) << endl;
-    //cout << "final coord: " << _coord.transpose() << endl;
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
       OBAtom* a = _mol.GetAtom(i+1);
       a->SetVector(v);
     }
-    //cout << "After optimization" << endl;
-    //conv.SetOutStream(&cout);
-    //conv.SetOutFormat("SDF");
-    //conv.Write(&_mol);
     return true;
   }
 
   bool OBDistanceGeometry::minimizeFourthDimension(void) {
-    OBConversion conv;
+    //OBConversion conv;
     unsigned int N = _mol.NumAtoms();
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
@@ -1253,26 +1254,16 @@ namespace OpenBabel {
     DistGeomFuncInclude4D f(this);
 
     //cout << "initial value (include4D): " << f(_coord) << endl;
-    //cout << "initial coord: " << _coord.transpose() << endl;
-    //cout << "Before optimization" << endl;
-    //conv.SetOutStream(&cout);
-    //conv.SetOutFormat("SDF");
-    //conv.Write(&_mol);
 
     cppoptlib::BfgsSolver<DistGeomFuncInclude4D> solver;
     solver.minimize(f, _coord);
 
     //cout << "final value (include4D): " << f(_coord) << endl;
-    //cout << "final coord: " << _coord.transpose() << endl;
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
       OBAtom* a = _mol.GetAtom(i+1);
       a->SetVector(v);
     }
-    //cout << "After optimization" << endl;
-    //conv.SetOutStream(&cout);
-    //conv.SetOutFormat("SDF");
-    //conv.Write(&_mol);
     return true;
   }
 
@@ -1295,12 +1286,25 @@ namespace OpenBabel {
     bool success = false;
     unsigned int maxIter = 1 * _mol.NumAtoms();
     for (unsigned int trial = 0; trial < maxIter; trial++) {
+      auto start = std::chrono::system_clock::now();
       generateInitialCoords();
+      auto end = std::chrono::system_clock::now();
+      int time1 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+      start = std::chrono::system_clock::now();
       firstMinimization();
+      end = std::chrono::system_clock::now();
+      int time2 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+      start = std::chrono::system_clock::now();
       minimizeFourthDimension();
+      end = std::chrono::system_clock::now();
+      int time3 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+      start = std::chrono::system_clock::now();
       CheckStereoConstraints();
+      end = std::chrono::system_clock::now();
+      int time4 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+      /*cout << "time: " << time1 << ", " << time2 << ", " << time3 << ", " << time4 << endl;
       cout << "stereo: " << (CheckStereoConstraints() ? "ok" : "ng")
-        << ", bounds: " << (CheckBounds() ? "ok" : "ng") << endl;
+        << ", bounds: " << (CheckBounds() ? "ok" : "ng") << endl;*/
       if(CheckStereoConstraints() && CheckBounds()) {
         success = true;
         break;
@@ -1310,8 +1314,8 @@ namespace OpenBabel {
     }
     if(!success) {
       obErrorLog.ThrowError(__FUNCTION__, "Distance Geometry failed.", obWarning);
+      exit(EXIT_FAILURE);
     }
-    //_mol.AddHydrogens();
   }
 
   bool OBDistanceGeometry::CheckBounds()
@@ -1446,15 +1450,7 @@ namespace OpenBabel {
       double ub = tetra.GetUpperBound();
       if(vol < lb) ret += (vol - lb) * (vol - lb);
       else if(vol > ub) ret += (vol - ub) * (vol - ub);
-      //cout << "v1 (" << nbrs[0] << "):" << v1.transpose() << endl;
-      //cout << "v2 (" << nbrs[1] << "):" << v2.transpose() << endl;
-      //cout << "v3 (" << nbrs[2] << "):" << v3.transpose() << endl;
-      //cout << "v4 (" << nbrs[3] << "):" << v4.transpose() << endl;
-      //cout << "vol: " << vol << ", lb: " << lb << ", ub: " << ub << endl;
     }
-
-    //cout << "x: " << x.transpose() << endl;
-    //cout << "value: " << ret << endl;
     return ret;
   }
 
@@ -1473,6 +1469,7 @@ namespace OpenBabel {
   void DistGeomFunc::calcGradient(OBDistanceGeometry* owner,
                                   const TVector &x, TVector &grad) {
     unsigned int dim = 4;
+    // clear gradient
     for (size_t i=0; i<grad.rows(); i++) {
       grad[i] = 0;
     }
@@ -1512,7 +1509,6 @@ namespace OpenBabel {
       idx2 = nbrs[1];
       idx3 = nbrs[2];
       idx4 = nbrs[3];
-      //cout << "nbrs: " << idx1 << ", " << idx2 << ", " << idx3 << ", " << idx4 << endl;
 
       Eigen::Vector3d v1(x(idx1 * dim), x(idx1 * dim+1), x(idx1 * dim+2));
       Eigen::Vector3d v2(x(idx2 * dim), x(idx2 * dim+1), x(idx2 * dim+2));

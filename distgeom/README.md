@@ -1,4 +1,14 @@
 # distgeom
+## 2019/06/18
+Full dataset evaluation. (time: 743.839s)
+```
+RMSD:		 1.861095663111644
+Bond error:	 0.11746152138644293
+Angle error:	 10.622304347896602
+Torsion error:	 63.7480769624682
+TFD:		 0.5473824428150154
+Stereo correct:	 99.20679886685552
+```
 ## 2019/06/17
 I found treating hydrogens explicitly greatly improves stereo accuracy.
 ```
