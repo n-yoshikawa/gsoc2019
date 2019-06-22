@@ -1,6 +1,6 @@
 # distgeom
 ## 2019/06/18
-Full dataset evaluation. (time: 743.839s)
+Full dataset evaluation of distance geometry. (time: 743.839s)
 ```
 RMSD:		 1.861095663111644
 Bond error:	 0.11746152138644293
@@ -9,6 +9,20 @@ Torsion error:	 63.7480769624682
 TFD:		 0.5473824428150154
 Stereo correct:	 99.20679886685552
 ```
+
+Combination of fragment-based method and using DG as back-up. (time: 10.416s)
+```
+RMSD:		 1.8133531399495717
+Bond error:	 0.050662140475224396
+Angle error:	 2.594241920508891
+Torsion error:	 43.31872350822983
+TFD:		 0.2756801308082744
+Stereo correct:	 96.1
+```
+
+Stereo correct should be higher.
+Something is wrong to stereochemistry correctness check function.
+
 ## 2019/06/17
 I found treating hydrogens explicitly greatly improves stereo accuracy.
 ```
