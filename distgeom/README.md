@@ -1,5 +1,18 @@
 # distgeom
-## 2019/06/18
+## 2019/06/23
+Use fragment information for distance constraints.
+```
+RMSD:		 1.9052187699834369
+Bond error:	 0.1066561281235832
+Angle error:	 9.928999359063296
+Torsion error:	 62.943971896249806
+TFD:		 0.46985033998316433
+Stereo correct:	 99.2
+```
+
+It did not contribute to better accuracy. It may be better to use fragment information to decide initial geometry.
+
+## 2019/06/22
 Full dataset evaluation of distance geometry. (time: 743.839s)
 ```
 RMSD:		 1.861095663111644
@@ -21,7 +34,7 @@ Stereo correct:	 96.1
 ```
 
 Stereo correct should be higher.
-Something is wrong to stereochemistry correctness check function.
+Something is wrong with stereochemistry correctness check function.
 
 ## 2019/06/17
 I found treating hydrogens explicitly greatly improves stereo accuracy.

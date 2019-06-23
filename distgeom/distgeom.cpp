@@ -28,6 +28,7 @@ GNU General Public License for more details.
 #include <openbabel/builder.h>
 #include <openbabel/elements.h>
 #include <openbabel/generic.h>
+#include <openbabel/locale.h>
 #include "rand.h"
 #include <openbabel/cppoptlib/meta.h>
 #include <openbabel/cppoptlib/problem.h>
@@ -43,7 +44,6 @@ GNU General Public License for more details.
 #include <string>
 #include <cmath>
 #include <random>
-#include <chrono>
 
 #include <Eigen/Eigenvalues>
 
@@ -150,21 +150,69 @@ namespace OpenBabel {
   float OBDistanceGeometry::GetLowerBounds(int i, int j) {
         return _d->GetLowerBounds(i, j);
   }
+
+  void OBDistanceGeometry::LoadFragments()  {
+    // open data/fragments.txt
+    ifstream ifs;
+    if (OpenDatafile(ifs, "rigid-fragments-index.txt").length() == 0) {
+      obErrorLog.ThrowError(__FUNCTION__, "Cannot open ring-fragments-index.txt", obError);
+      return;
+    }
+
+    // Set the locale for number parsing to avoid locale issues: PR#1785463
+    // TODO: Use OpenDatafile()
+    obLocale.SetLocale();
+
+    std::string smiles;
+    int index;
+    while(ifs >> smiles >> index) {
+      _rigid_fragments.push_back(smiles);
+      _rigid_fragments_index[smiles] = index;
+    }
+    // return the locale to the original one
+    obLocale.RestoreLocale();
+  }
+
+  std::vector<vector3> OBDistanceGeometry::GetFragmentCoord(std::string smiles) {
+    if (_rigid_fragments_cache.count(smiles) > 0) {
+      return _rigid_fragments_cache[smiles];
+    }
+
+    std::vector<vector3> coords;
+    if (_rigid_fragments_index.count(smiles) == 0) {
+      return coords;
+    }
+
+    ifstream ifs;
+    if (OpenDatafile(ifs, "rigid-fragments.txt").length() == 0) {
+      obErrorLog.ThrowError(__FUNCTION__, "Cannot open rigid-fragments.txt", obError);
+      return coords;
+    }
+
+    ifs.clear();
+    ifs.seekg(_rigid_fragments_index[smiles]);
+    char buffer[BUFF_SIZE];
+    vector<string> vs;
+    while (ifs.getline(buffer, BUFF_SIZE)) {
+      tokenize(vs, buffer);
+      if (vs.size() == 4) { // XYZ coordinates
+        vector3 coord(atof(vs[1].c_str()), atof(vs[2].c_str()), atof(vs[3].c_str()));
+        coords.push_back(coord);
+      } else if (vs.size() == 1) { // SMARTS pattern
+        break;
+      }
+    }
+    return coords;
+  }
+
   bool OBDistanceGeometry::Setup(const OBMol &mol, bool useCurrentGeometry)
   {
     if (_d != NULL)
       delete _d;
     // TODO: add IsSetupNeeded() like OBForceField to prevent duplication of work
-    //
-    /*cout << "processing: ";
-    OBConversion conv;
-    conv.SetOutStream(&cout);
-    conv.SetOutFormat("smi");*/
 
     dim = 4;
     _mol = mol;
-
-    //conv.Write(&_mol);
 
     _mol.SetDimension(3);
     _vdata = _mol.GetAllData(OBGenericDataType::StereoData);
@@ -206,7 +254,6 @@ namespace OpenBabel {
     FOR_ATOMS_OF_MOL(atom, _mol) {
       if (facade.HasTetrahedralStereo(atom->GetId())) {
         OBTetrahedralStereo *ts = facade.GetTetrahedralStereo(atom->GetId());
-        //std::cout << (*ts) << std::endl;
         OBTetrahedralStereo::Config config = ts->GetConfig();
         vector<unsigned long> nbrs;
 
@@ -223,41 +270,78 @@ namespace OpenBabel {
         if(config.winding == OBStereo::Clockwise) {
           TetrahedralInfo ti(config.center, nbrs, -100.0, -5.0);
           _stereo.push_back(ti);
-          /*cout << "Clockwise: [" 
-            << nbrs[0] << "->" << _mol.GetAtom(nbrs[0]+1)->GetAtomicNum() << ", "
-            << nbrs[1] << "->" << _mol.GetAtom(nbrs[1]+1)->GetAtomicNum() << ", "
-            << nbrs[2] << "->" << _mol.GetAtom(nbrs[2]+1)->GetAtomicNum() << ", "
-            << nbrs[3] << "->" << _mol.GetAtom(nbrs[3]+1)->GetAtomicNum() << "] " << endl;*/
-        } else {
+        } else if(config.winding == OBStereo::AntiClockwise) {
           TetrahedralInfo ti(config.center, nbrs, 5.0, 100.0);
           _stereo.push_back(ti);
-          /*cout << "Counterclockwise: [" 
-            << nbrs[0] << "->" << _mol.GetAtom(nbrs[0]+1)->GetAtomicNum() << ", "
-            << nbrs[1] << "->" << _mol.GetAtom(nbrs[1]+1)->GetAtomicNum() << ", "
-            << nbrs[2] << "->" << _mol.GetAtom(nbrs[2]+1)->GetAtomicNum() << ", "
-            << nbrs[3] << "->" << _mol.GetAtom(nbrs[3]+1)->GetAtomicNum() << "] " << endl;*/
         }
-      } /*else {
-        if (atom->MemberOfRingCount() >= 2) {
-          vector<unsigned long> nbrs;
-          FOR_NBORS_OF_ATOM(n, &*atom) {
-            nbrs.push_back(n->GetIdx());
-          }
-          for(auto &n : nbrs) {
-            //cout << n << " ";
-          }
-          cout << endl;
-          if(nbrs.size() == 4) {
-            TetrahedralInfo ti(atom->GetIdx(), nbrs, 5.0, 100.0);
-            _stereo.push_back(ti);
-            cout << "Planar: [" 
-            << nbrs[0] << "->" << _mol.GetAtom(nbrs[0]+1)->GetAtomicNum() << ", "
-            << nbrs[1] << "->" << _mol.GetAtom(nbrs[1]+1)->GetAtomicNum() << ", "
-            << nbrs[2] << "->" << _mol.GetAtom(nbrs[2]+1)->GetAtomicNum() << ", "
-            << nbrs[3] << "->" << _mol.GetAtom(nbrs[3]+1)->GetAtomicNum() << "] " << endl;
+      }
+    }
+
+    // datafile is read only on first use
+    if(_rigid_fragments.empty())
+      LoadFragments();
+
+    OBBitVec vfrag; // Atoms that are part of a fragment found in the database.
+    OBConversion conv;
+    conv.SetOutFormat("can"); // Canonical SMILES
+    OBBitVec atomsToCopy;
+    FOR_ATOMS_OF_MOL(atom, _mol) {
+      atomsToCopy.SetBitOn(atom->GetIdx());
+    }
+
+    // Exclude rotatable bonds
+    OBBitVec bondsToExclude;
+    FOR_BONDS_OF_MOL(bond, _mol) {
+      if (bond->IsRotor()) {
+        bondsToExclude.SetBitOn(bond->GetIdx());
+      }
+    }
+    // Generate fragments by copy
+    OBMol mol_copy;
+    _mol.CopySubstructure(mol_copy, &atomsToCopy, &bondsToExclude);
+
+    // Separate each disconnected fragments as different molecules
+    vector<OBMol> fragments = mol_copy.Separate();
+
+    for(vector<OBMol>::iterator f = fragments.begin(); f != fragments.end(); ++f) {
+      std::string fragment_smiles = conv.WriteString(&*f, true);
+      // if rigid fragment is in database
+      if (_rigid_fragments_index.count(fragment_smiles) > 0) {
+        OBSmartsPattern sp;
+        if (!sp.Init(fragment_smiles)) {
+          obErrorLog.ThrowError(__FUNCTION__, " Could not parse SMARTS from fragment", obInfo);
+        } else if (sp.Match(_mol)) { // for all matches
+          vector<vector<int> > mlist = sp.GetUMapList();  // match list for fragments
+          for (vector<vector<int> >::iterator j = mlist.begin(); j != mlist.end(); ++j) {
+            // Have any atoms of this match already been added?
+            bool alreadydone = false;
+            std::vector<vector3> coords = GetFragmentCoord(fragment_smiles);
+            for (auto k = j->begin(); k != j->end(); ++k) {
+              if (vfrag.BitIsSet(*k)) {
+                alreadydone = true;
+                break;
+              }
+            }
+            if (alreadydone) continue;
+
+            for (auto k = j->begin(); k != j->end(); ++k)
+              vfrag.SetBitOn(*k); // Set vfrag for all atoms of fragment
+
+            for (auto p = j->begin(); p != j->end(); ++p) {
+              for (auto q = j->begin(); q != j->end(); ++q) {
+                unsigned int p_i = (*p) - 1;
+                unsigned int q_i = (*q) - 1;
+                vector3 v_p = coords[p - j->begin()];
+                vector3 v_q = coords[q - j->begin()];
+                double length = (v_p - v_q).length();
+                // Allow a tiny amount of slop
+                _d->SetLowerBounds(p_i, q_i, length - DIST12_TOL / 2.0);
+                _d->SetUpperBounds(p_i, q_i, length + DIST12_TOL / 2.0);
+              }
+            }
           }
         }
-      }*/
+      }
     }
     return true;
   }
@@ -1189,7 +1273,6 @@ namespace OpenBabel {
         T(j, i) = v;
       }
     }
-    unsigned int dim = 4;
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(T);
     Eigen::VectorXd eigVals = es.eigenvalues();
     Eigen::MatrixXd eigVecs = es.eigenvectors();
@@ -1209,10 +1292,9 @@ namespace OpenBabel {
     Eigen::MatrixXd distMat2(N, N);
     for (size_t i = 0; i < N; i++) {
       for (size_t j = 0; j < N; j++) {
-        distMat2(i, j) = sqrt(pow(_coord(i*dim + 0)-_coord(j*dim + 0), 2.0)
-                         + pow(_coord(i*dim + 1)-_coord(j*dim + 1), 2.0)
-                         + pow(_coord(i*dim + 2)-_coord(j*dim + 2), 2.0)
-                         + pow(_coord(i*dim + 3)-_coord(j*dim + 3), 2.0));
+        for(size_t k = 0; k < dim; k++)
+          distMat2(i, j) += pow(_coord(i*dim + k)-_coord(j*dim + k), 2.0);
+        distMat2(i, j) = sqrt(distMat2(i, j));
       }
     }
     return true;
@@ -1220,7 +1302,6 @@ namespace OpenBabel {
 
 
   bool OBDistanceGeometry::firstMinimization(void) {
-    //OBConversion conv;
     unsigned int N = _mol.NumAtoms();
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
@@ -1229,12 +1310,9 @@ namespace OpenBabel {
     }
     DistGeomFunc f(this);
 
-    //cout << "initial value: " << f(_coord) << endl;
-
     cppoptlib::BfgsSolver<DistGeomFunc> solver;
     solver.minimize(f, _coord);
 
-    //cout << "final value: " << f(_coord) << endl;
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
       OBAtom* a = _mol.GetAtom(i+1);
@@ -1244,7 +1322,6 @@ namespace OpenBabel {
   }
 
   bool OBDistanceGeometry::minimizeFourthDimension(void) {
-    //OBConversion conv;
     unsigned int N = _mol.NumAtoms();
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
@@ -1253,12 +1330,9 @@ namespace OpenBabel {
     }
     DistGeomFuncInclude4D f(this);
 
-    //cout << "initial value (include4D): " << f(_coord) << endl;
-
     cppoptlib::BfgsSolver<DistGeomFuncInclude4D> solver;
     solver.minimize(f, _coord);
 
-    //cout << "final value (include4D): " << f(_coord) << endl;
     for(size_t i=0; i<N; ++i) {
       vector3 v(_coord(i*dim), _coord(i*dim+1), _coord(i*dim+2));
       OBAtom* a = _mol.GetAtom(i+1);
@@ -1286,26 +1360,10 @@ namespace OpenBabel {
     bool success = false;
     unsigned int maxIter = 1 * _mol.NumAtoms();
     for (unsigned int trial = 0; trial < maxIter; trial++) {
-      auto start = std::chrono::system_clock::now();
       generateInitialCoords();
-      auto end = std::chrono::system_clock::now();
-      int time1 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-      start = std::chrono::system_clock::now();
       firstMinimization();
-      end = std::chrono::system_clock::now();
-      int time2 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-      start = std::chrono::system_clock::now();
-      minimizeFourthDimension();
-      end = std::chrono::system_clock::now();
-      int time3 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-      start = std::chrono::system_clock::now();
-      CheckStereoConstraints();
-      end = std::chrono::system_clock::now();
-      int time4 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-      /*cout << "time: " << time1 << ", " << time2 << ", " << time3 << ", " << time4 << endl;
-      cout << "stereo: " << (CheckStereoConstraints() ? "ok" : "ng")
-        << ", bounds: " << (CheckBounds() ? "ok" : "ng") << endl;*/
-      if(CheckStereoConstraints() && CheckBounds()) {
+      if (dim == 4) minimizeFourthDimension();
+      if (CheckStereoConstraints() && CheckBounds()) {
         success = true;
         break;
       }
@@ -1314,7 +1372,6 @@ namespace OpenBabel {
     }
     if(!success) {
       obErrorLog.ThrowError(__FUNCTION__, "Distance Geometry failed.", obWarning);
-      exit(EXIT_FAILURE);
     }
   }
 
@@ -1407,7 +1464,7 @@ namespace OpenBabel {
 
   double DistGeomFuncInclude4D::value(const TVector &x) {
     double ret = DistGeomFunc::calcValue(owner, x);
-    const size_t dim = 4;
+    const size_t dim = owner->GetDimension();
     const size_t size = x.size()/dim;
     for(size_t i=0; i<size; ++i) {
       ret += pow(x[i*dim+3], 2.0);
@@ -1416,17 +1473,16 @@ namespace OpenBabel {
   }
 
   double DistGeomFunc::calcValue(OBDistanceGeometry* owner, const TVector &x) {
-    unsigned int dim = 4;
+    unsigned int dim = owner->GetDimension();
     const size_t size = x.size()/dim;
     double ret = 0.0;
     // calculate distance error
     for(size_t i=0; i<size; ++i) {
         for(size_t j=0; j<size; ++j) {
             double v = 0.0;
-            double d2 = pow(x[i*dim]-x[j*dim], 2.0) 
-                + pow(x[i*dim+1]-x[j*dim+1], 2.0)
-                + pow(x[i*dim+2]-x[j*dim+2], 2.0)
-                + pow(x[i*dim+3]-x[j*dim+3], 2.0);
+            double d2 = 0;
+            for(size_t k=0; k<dim; k++)
+              d2 += pow(x[i*dim+k]-x[j*dim+k], 2.0);
             double d = sqrt(d2);
             double ub = owner->GetUpperBounds(i, j);
             double lb = owner->GetLowerBounds(i, j);
@@ -1440,7 +1496,6 @@ namespace OpenBabel {
     // calculate distance error
     for(auto &tetra : owner->_stereo) {
       vector<unsigned long> nbrs = tetra.GetNeighbors();
-      //cout << "nbrs: " << nbrs[0] << ", " << nbrs[1] << ", " << nbrs[2] << ", " << nbrs[3] << endl;
       Eigen::Vector3d v1(x(nbrs[0] * dim), x(nbrs[0]*dim+1), x(nbrs[0]*dim+2));
       Eigen::Vector3d v2(x(nbrs[1] * dim), x(nbrs[1]*dim+1), x(nbrs[1]*dim+2));
       Eigen::Vector3d v3(x(nbrs[2] * dim), x(nbrs[2]*dim+1), x(nbrs[2]*dim+2));
@@ -1459,7 +1514,7 @@ namespace OpenBabel {
   }
   void DistGeomFuncInclude4D::gradient(const TVector &x, TVector &grad) {
     DistGeomFunc::calcGradient(owner, x, grad);
-    unsigned int dim = 4;
+    unsigned int dim = owner->GetDimension();
     unsigned int N = x.size() / dim;
     for(size_t i=0; i<N; ++i) {
       grad[i * dim + 3] += 2.0 * x[i * dim + 3];
@@ -1468,7 +1523,7 @@ namespace OpenBabel {
 
   void DistGeomFunc::calcGradient(OBDistanceGeometry* owner,
                                   const TVector &x, TVector &grad) {
-    unsigned int dim = 4;
+    unsigned int dim = owner->GetDimension();
     // clear gradient
     for (size_t i=0; i<grad.rows(); i++) {
       grad[i] = 0;
@@ -1480,10 +1535,9 @@ namespace OpenBabel {
         double preFactor = 0.0;
         double ub = owner->GetUpperBounds(i, j);
         double lb = owner->GetLowerBounds(i, j);
-        double d2 = pow(x[i*dim]-x[j*dim], 2.0) 
-                   + pow(x[i*dim+1]-x[j*dim+1], 2.0)
-                   + pow(x[i*dim+2]-x[j*dim+2], 2.0)
-                   + pow(x[i*dim+3]-x[j*dim+3], 2.0);
+        double d2 = 0;
+        for(size_t k=0; k<dim; k++)
+          d2 += pow(x[i*dim+k]-x[j*dim+k], 2.0);
         double d = sqrt(d2);
         if (d > ub) {
           double u2 = ub * ub;

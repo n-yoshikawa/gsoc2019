@@ -81,12 +81,19 @@ namespace OpenBabel {
     bool SetBoundsMatrix(const Eigen::MatrixXf bounds);
     float GetUpperBounds(int i, int j);
     float GetLowerBounds(int i, int j);
+    unsigned int GetDimension() {return dim;};
     std::vector<TetrahedralInfo>  _stereo;       //!< Internal private data, including stereo info
+
+    void LoadFragments();
+    std::vector<vector3> GetFragmentCoord(std::string smiles);
   private:
     OBMol                     _mol;
     std::vector<OBGenericData*> _vdata;
     DistanceGeometryPrivate  *_d;    //!< Internal private data, including bounds matrix
     Eigen::VectorXd _coord;          // one-dimensional vector containing coordinates of atoms
+    std::vector<std::string> _rigid_fragments;
+    std::map<std::string, int> _rigid_fragments_index;
+    std::map<std::string, std::vector<vector3> > _rigid_fragments_cache;
 
     unsigned int dim;
 
