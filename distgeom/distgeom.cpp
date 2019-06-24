@@ -277,72 +277,6 @@ namespace OpenBabel {
       }
     }
 
-    // datafile is read only on first use
-    if(_rigid_fragments.empty())
-      LoadFragments();
-
-    OBBitVec vfrag; // Atoms that are part of a fragment found in the database.
-    OBConversion conv;
-    conv.SetOutFormat("can"); // Canonical SMILES
-    OBBitVec atomsToCopy;
-    FOR_ATOMS_OF_MOL(atom, _mol) {
-      atomsToCopy.SetBitOn(atom->GetIdx());
-    }
-
-    // Exclude rotatable bonds
-    OBBitVec bondsToExclude;
-    FOR_BONDS_OF_MOL(bond, _mol) {
-      if (bond->IsRotor()) {
-        bondsToExclude.SetBitOn(bond->GetIdx());
-      }
-    }
-    // Generate fragments by copy
-    OBMol mol_copy;
-    _mol.CopySubstructure(mol_copy, &atomsToCopy, &bondsToExclude);
-
-    // Separate each disconnected fragments as different molecules
-    vector<OBMol> fragments = mol_copy.Separate();
-
-    for(vector<OBMol>::iterator f = fragments.begin(); f != fragments.end(); ++f) {
-      std::string fragment_smiles = conv.WriteString(&*f, true);
-      // if rigid fragment is in database
-      if (_rigid_fragments_index.count(fragment_smiles) > 0) {
-        OBSmartsPattern sp;
-        if (!sp.Init(fragment_smiles)) {
-          obErrorLog.ThrowError(__FUNCTION__, " Could not parse SMARTS from fragment", obInfo);
-        } else if (sp.Match(_mol)) { // for all matches
-          vector<vector<int> > mlist = sp.GetUMapList();  // match list for fragments
-          for (vector<vector<int> >::iterator j = mlist.begin(); j != mlist.end(); ++j) {
-            // Have any atoms of this match already been added?
-            bool alreadydone = false;
-            std::vector<vector3> coords = GetFragmentCoord(fragment_smiles);
-            for (auto k = j->begin(); k != j->end(); ++k) {
-              if (vfrag.BitIsSet(*k)) {
-                alreadydone = true;
-                break;
-              }
-            }
-            if (alreadydone) continue;
-
-            for (auto k = j->begin(); k != j->end(); ++k)
-              vfrag.SetBitOn(*k); // Set vfrag for all atoms of fragment
-
-            for (auto p = j->begin(); p != j->end(); ++p) {
-              for (auto q = j->begin(); q != j->end(); ++q) {
-                unsigned int p_i = (*p) - 1;
-                unsigned int q_i = (*q) - 1;
-                vector3 v_p = coords[p - j->begin()];
-                vector3 v_q = coords[q - j->begin()];
-                double length = (v_p - v_q).length();
-                // Allow a tiny amount of slop
-                _d->SetLowerBounds(p_i, q_i, length - DIST12_TOL / 2.0);
-                _d->SetUpperBounds(p_i, q_i, length + DIST12_TOL / 2.0);
-              }
-            }
-          }
-        }
-      }
-    }
     return true;
   }
 
@@ -1226,6 +1160,21 @@ namespace OpenBabel {
   }
 
   bool OBDistanceGeometry::generateInitialCoords(void) {
+    OBBuilder builder;
+    cout << "fragment-based builder..." << endl;
+    builder.Build(_mol);
+    unsigned int N = _mol.NumAtoms();
+    _coord.resize(N * dim);
+    for(size_t i=0; i<N; ++i) {
+      OBAtom* a = _mol.GetAtom(i+1);
+      vector3 v = a->GetVector();
+      _coord(i*dim) = v.GetX();
+      _coord(i*dim+1) = v.GetY();
+      _coord(i*dim+2) = v.GetZ();
+      if(dim == 4) _coord(i*dim+3) = 0;
+    }
+
+    /*
     // place atoms randomly
     unsigned int N = _mol.NumAtoms();
     // random distance matrix
@@ -1240,6 +1189,76 @@ namespace OpenBabel {
         double v = unif(mt);
         distMat(i, j) = v;
         distMat(j, i) = v;
+      }
+    }
+
+    // datafile is read only on first use
+    if(_rigid_fragments.empty())
+      LoadFragments();
+
+    OBBitVec vfrag; // Atoms that are part of a fragment found in the database.
+    OBConversion conv;
+    conv.SetOutFormat("can"); // Canonical SMILES
+    OBBitVec atomsToCopy;
+    FOR_ATOMS_OF_MOL(atom, _mol) {
+      atomsToCopy.SetBitOn(atom->GetIdx());
+    }
+
+    // Exclude rotatable bonds
+    OBBitVec bondsToExclude;
+    FOR_BONDS_OF_MOL(bond, _mol) {
+      if (bond->IsRotor()) {
+        bondsToExclude.SetBitOn(bond->GetIdx());
+      }
+    }
+    // Generate fragments by copy
+    OBMol mol_copy;
+    _mol.CopySubstructure(mol_copy, &atomsToCopy, &bondsToExclude);
+
+    // Separate each disconnected fragments as different molecules
+    vector<OBMol> fragments = mol_copy.Separate();
+
+    for(vector<OBMol>::iterator f = fragments.begin(); f != fragments.end(); ++f) {
+      std::string fragment_smiles = conv.WriteString(&*f, true);
+      std::cout << fragment_smiles << std::endl;
+      // if rigid fragment is in database
+      if (_rigid_fragments_index.count(fragment_smiles) > 0) {
+        OBSmartsPattern sp;
+        if (!sp.Init(fragment_smiles)) {
+          obErrorLog.ThrowError(__FUNCTION__, " Could not parse SMARTS from fragment", obInfo);
+        } else if (sp.Match(_mol)) { // for all matches
+          vector<vector<int> > mlist = sp.GetUMapList();  // match list for fragments
+          for (vector<vector<int> >::iterator j = mlist.begin(); j != mlist.end(); ++j) {
+            // Have any atoms of this match already been added?
+            bool alreadydone = false;
+            std::vector<vector3> coords = GetFragmentCoord(fragment_smiles);
+            for (auto k = j->begin(); k != j->end(); ++k) {
+              if (vfrag.BitIsSet(*k)) {
+                alreadydone = true;
+                break;
+              }
+            }
+            if (alreadydone) continue;
+
+            for (auto k = j->begin(); k != j->end(); ++k)
+              vfrag.SetBitOn(*k); // Set vfrag for all atoms of fragment
+
+            for (auto p = j->begin(); p != j->end(); ++p) {
+              for (auto q = j->begin(); q != j->end(); ++q) {
+                unsigned int p_i = (*p) - 1;
+                unsigned int q_i = (*q) - 1;
+                vector3 v_p = coords[p - j->begin()];
+                vector3 v_q = coords[q - j->begin()];
+                double length = (v_p - v_q).length();
+                // Allow a tiny amount of slop
+                distMat(p_i, q_i) = length;
+                distMat(q_i, p_i) = length;
+                cout << "(" << p_i << ", " << q_i << "): " 
+                     << _d->GetLowerBounds(p_i, q_i) << " < " << length << " < " << _d->GetUpperBounds(p_i, q_i) << endl;
+              }
+            }
+          }
+        }
       }
     }
     // metrix matrix
@@ -1297,6 +1316,7 @@ namespace OpenBabel {
         distMat2(i, j) = sqrt(distMat2(i, j));
       }
     }
+    */
     return true;
   }
 
