@@ -1160,7 +1160,7 @@ namespace OpenBabel {
   }
 
   bool OBDistanceGeometry::generateInitialCoords(void) {
-    OBBuilder builder;
+    /*OBBuilder builder;
     cout << "fragment-based builder..." << endl;
     builder.Build(_mol);
     unsigned int N = _mol.NumAtoms();
@@ -1172,9 +1172,8 @@ namespace OpenBabel {
       _coord(i*dim+1) = v.GetY();
       _coord(i*dim+2) = v.GetZ();
       if(dim == 4) _coord(i*dim+3) = 0;
-    }
+    }*/
 
-    /*
     // place atoms randomly
     unsigned int N = _mol.NumAtoms();
     // random distance matrix
@@ -1220,7 +1219,7 @@ namespace OpenBabel {
 
     for(vector<OBMol>::iterator f = fragments.begin(); f != fragments.end(); ++f) {
       std::string fragment_smiles = conv.WriteString(&*f, true);
-      std::cout << fragment_smiles << std::endl;
+      //std::cout << fragment_smiles << std::endl;
       // if rigid fragment is in database
       if (_rigid_fragments_index.count(fragment_smiles) > 0) {
         OBSmartsPattern sp;
@@ -1245,6 +1244,7 @@ namespace OpenBabel {
 
             for (auto p = j->begin(); p != j->end(); ++p) {
               for (auto q = j->begin(); q != j->end(); ++q) {
+                if(*q >= *p) continue;
                 unsigned int p_i = (*p) - 1;
                 unsigned int q_i = (*q) - 1;
                 vector3 v_p = coords[p - j->begin()];
@@ -1253,8 +1253,10 @@ namespace OpenBabel {
                 // Allow a tiny amount of slop
                 distMat(p_i, q_i) = length;
                 distMat(q_i, p_i) = length;
-                cout << "(" << p_i << ", " << q_i << "): " 
-                     << _d->GetLowerBounds(p_i, q_i) << " < " << length << " < " << _d->GetUpperBounds(p_i, q_i) << endl;
+                _d->SetLowerBounds(p_i, q_i, length - DIST12_TOL);
+                _d->SetUpperBounds(p_i, q_i, length + DIST12_TOL);
+                /*cout << "(" << p_i << ", " << q_i << "): " 
+                     << _d->GetLowerBounds(p_i, q_i) << " < " << length << " < " << _d->GetUpperBounds(p_i, q_i) << endl;*/
               }
             }
           }
@@ -1316,7 +1318,7 @@ namespace OpenBabel {
         distMat2(i, j) = sqrt(distMat2(i, j));
       }
     }
-    */
+
     return true;
   }
 
@@ -1390,6 +1392,8 @@ namespace OpenBabel {
       if (_d->debug && !success)
         cerr << "Stereo unsatisfied, trying again" << endl;
     }
+    _mol.DeleteHydrogens();
+    _mol.AddHydrogens();
     if(!success) {
       obErrorLog.ThrowError(__FUNCTION__, "Distance Geometry failed.", obWarning);
     }
