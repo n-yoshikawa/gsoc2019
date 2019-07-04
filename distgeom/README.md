@@ -1,4 +1,55 @@
 # distgeom
+## 2019/07/04
+The biggest problem in current implementation is wrong bounds.
+I comparing bounds by RDKit and Open Babel to see how they are different.
+I printed bounds for `c1ccccc1`.
+
+RDKit
+
+```
+(0, 0) 0 < x < 0
+(0, 1) 1.36926 < x < 1.38926
+(0, 2) 2.34894 < x < 2.42894
+(0, 3) 2.69851 < x < 2.81851
+(0, 4) 2.34894 < x < 2.42894
+(0, 5) 1.36926 < x < 1.38926
+(0, 6) 1.07142 < x < 1.09142
+(0, 7) 2.0962 < x < 2.1762
+(0, 8) 3.30915 < x < 3.42915
+(0, 9) 3.75993 < x < 3.90993
+(0, 10) 3.30915 < x < 3.42915
+(0, 11) 2.0962 < x < 2.1762
+```
+
+Open Babel
+
+```
+(0, 0) 0 < x < 0
+(0, 1) 1.32792 < x < 1.35792
+(0, 2) 2.28735 < x < 2.34735
+(0, 3) 2.63584 < x < 2.73584
+(0, 4) 2.28735 < x < 2.34735
+(0, 5) 1.32792 < x < 1.35792
+(0, 6) 1.017 < x < 1.047
+(0, 7) 2.02397 < x < 2.08397
+(0, 8) 3.24761 < x < 3.29761
+(0, 9) 2.23357 < x < 3.77241
+(0, 10) 3.24761 < x < 3.29761
+(0, 11) 2.02397 < x < 2.08397
+```
+
+They are different. Because of this difference, bond accuracy of the distance geometry is low and fragments are distorted in REFINE.
+
+#### BACKUP
+The shape of fragment (`c1ccccc1`) is preserved.
+![BACKUP](https://user-images.githubusercontent.com/29328746/60651268-d6e75c80-9e80-11e9-8480-d3965c482c7a.png)
+#### CONSTRAIN
+The shape of fragment (`c1ccccc1`) is preserved.
+![CONSTRAIN](https://user-images.githubusercontent.com/29328746/60651278-d9e24d00-9e80-11e9-9d7f-6df3737ae107.png)
+#### REFINE
+The shape of fragment (`c1ccccc1`) is distorted.
+![REFINE](https://user-images.githubusercontent.com/29328746/60651281-dbac1080-9e80-11e9-975c-8d9697485455.png)
+
 ## 2019/06/25
 Use fragment-based builder for distance bound and initial distance matrix (time: 431.924s / 1000 mols)
 
