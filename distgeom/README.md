@@ -1,4 +1,14 @@
 # distgeom
+## 2019/07/05
+### time comparison
+Time of steps in refinement of `O=C1N(C)C(=N[C@](C1)(C)CCc1ccccc1)N`.
+
+| Step | RDKit | Open Babel |
+| ---- | ----- | ---------- |
+| Initial geometry generation | 5604 | 3635 |
+| Refinement without 4D error | 5404 | 198004 |
+| Refinement with 4D error | 313 | 104574 |
+
 ## 2019/07/04
 The biggest problem in current implementation is wrong bounds.
 I comparing bounds by RDKit and Open Babel to see how they are different.
@@ -49,6 +59,9 @@ The shape of fragment (`c1ccccc1`) is preserved.
 #### REFINE
 The shape of fragment (`c1ccccc1`) is distorted.
 ![REFINE](https://user-images.githubusercontent.com/29328746/60651281-dbac1080-9e80-11e9-975c-8d9697485455.png)
+#### Fragment-based
+![Fragment-based](https://user-images.githubusercontent.com/29328746/60720911-2e5ff800-9f67-11e9-9151-12b581a42b7b.png)
+
 
 ## 2019/06/25
 Use fragment-based builder for distance bound and initial distance matrix (time: 431.924s / 1000 mols)
