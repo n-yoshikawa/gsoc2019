@@ -1,4 +1,48 @@
 # Worklog
+## 2019/07/12
+Try setting boundary from fragments, but it did not work well.
+
+### Experimental structure
+![Experiment](https://user-images.githubusercontent.com/29328746/61119850-a766ce80-a4d6-11e9-8e2e-1391b6d0c7d6.png)
+### Predicted structure
+![Predicted](https://user-images.githubusercontent.com/29328746/61119903-c49b9d00-a4d6-11e9-9ca8-2ef9b0ba257d.png)
+
+The most suspicious reason is wrong treatment of fragment index.
+Canonical index of fragment when generating fragment
+
+```
+$ python3 fragment-rdkit.py 003_2JFZ_A.sdf 
+2019.09.1dev1
+CC(C)Cn1c(=O)n(C)c(=O)c2c(-c3ccncc3)n(Cc3cccc4ccccc34)nc21
+[24, 4, 32, 17, 29, 0, 1, 28, 19, 30, 16, 21, 26, 15, 7, 5, 13, 25, 14, 6, 12, 22, 20, 10, 8, 18, 9, 11, 27, 23, 3, 31, 2]
+Cn1c(=O)[nH]c2n[nH]cc2c1=O
+match: (32, 31, 0, 1, 2, 7, 8, 9, 21, 28, 29, 30)
+canonical: [2, 31, 24, 4, 32, 28, 19, 30, 22, 27, 23, 3]
+c1ccc2ccccc2c1
+match: (14, 15, 16, 17, 18, 19, 20, 11, 12, 13)
+canonical: [7, 5, 13, 25, 14, 6, 12, 21, 26, 15]
+c1ccncc1
+match: (22, 23, 24, 25, 26, 27)
+canonical: [20, 10, 8, 18, 9, 11]
+```
+
+Canonical index of fragment when using fragment
+```
+$ python3 useFragment.py 
+2019.09.1dev1
+[0, 29, 1, 17, 32, 24, 4, 31, 2, 23, 3, 27, 22, 20, 10, 8, 18, 9, 11, 30, 16, 21, 12, 6, 14, 25, 13, 5, 7, 15, 26, 19, 28]
+CC(C)Cn1c(=O)n(C)c(=O)c2c(-c3ccncc3)n(Cc3cccc4ccccc34)nc21
+Cn1c(=O)[nH]c2n[nH]cc2c1=O
+match: (4, 5, 6, 7, 8, 9, 10, 11, 12, 19, 31, 32)
+canonical: [32, 24, 4, 31, 2, 23, 3, 27, 22, 30, 19, 28]
+c1ccncc1
+match: (13, 14, 15, 16, 17, 18)
+canonical: [20, 10, 8, 18, 9, 11]
+c1ccc2ccccc2c1
+match: (21, 22, 23, 24, 25, 26, 27, 28, 29, 30)
+canonical: [21, 12, 6, 14, 25, 13, 5, 7, 15, 26]
+```
+
 ## 2019/05/15
 Update fragment generation following Greg's advice.
 Most fragments from both softwares seem to be the same up to canonical SMILES generation.
