@@ -4,7 +4,8 @@ import pickle
 import numpy as np
 import rdkit
 from rdkit import Chem
-
+from rdkit.Chem import rdDistGeom
+np.set_printoptions(precision=4)
 print(rdkit.__version__)
 
 suppl = Chem.SDMolSupplier(sys.argv[1])
@@ -30,6 +31,11 @@ for mol in suppl:
         # Skip small fragments
         if fragment.GetNumHeavyAtoms() < 5:
             continue
+        smiles = Chem.MolToSmiles(fragment)
+        atomOrder = fragment.GetPropsAsDict(includePrivate=True,includeComputed=True)['_smilesAtomOutputOrder']
+        
+        fragment = Chem.RenumberAtoms(fragment,atomOrder)
+        
         conf = fragment.GetConformer()
         N = fragment.GetNumAtoms()
         distMat = np.zeros((N, N))
@@ -38,7 +44,7 @@ for mol in suppl:
                 i = atom1.GetIdx()
                 j = atom2.GetIdx()
                 distMat[i, j] = (conf.GetAtomPosition(i)-conf.GetAtomPosition(j)).Length()
-        smiles = Chem.MolToSmiles(fragment)
+        print(smiles)
         fragment_list[smiles] = distMat
 # Save distance matrix by pickle
 with open('fragments.pickle', mode='wb') as f:
