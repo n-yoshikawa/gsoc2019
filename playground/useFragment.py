@@ -19,6 +19,7 @@ with open(sys.argv[1], "r") as f:
         mol = Chem.MolFromSmiles(smiles)
         mol.SetProp("_Name", entry)
         print(smiles)
+        mol = Chem.AddHs(mol)
         
         bm = rdDistGeom.GetMoleculeBoundsMatrix(mol)
         
@@ -60,9 +61,15 @@ with open(sys.argv[1], "r") as f:
                             bm[p, q] = distMat[i, j] - 0.0001
         
         DG.DoTriangleSmoothing(bm)
-        ps = rdDistGeom.EmbedParameters()
+        ps = rdDistGeom.ETKDG()
         ps.useRandomCoords = True
         ps.SetBoundsMat(bm)
         ps.randomSeed = 0xf00d
-        rdDistGeom.EmbedMolecule(mol, ps)
+        try:
+            rdDistGeom.EmbedMolecule(mol, ps)
+        except:
+            ps = rdDistGeom.ETKDG()
+            ps.useRandomCoords = True
+            ps.randomSeed = 0xf00d
+            rdDistGeom.EmbedMolecule(mol, ps)
         w.write(mol)
