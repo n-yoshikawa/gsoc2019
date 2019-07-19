@@ -1,4 +1,20 @@
 # Worklog
+## 2019/07/19
+Found `DG.DoTriangleSmoothing(bm)` generates incorrect bounds.
+The result fragment-constrained ETKDG after removing smoothing:
+```
+Execution time: 878.2s
+RMSD:		 1.6866975065548626
+Bond error:	 0.06027678700780884
+Angle error:	 2.957182986106555
+Torsion error:	 44.62808035409985
+TFD:		 0.22151221403122506
+Stereo correct:	 99.47229551451187
+```
+The accuracy is almost the same as original ETKDG, but the execution time is 3 times longer.
+The longer execution time is probably caused by bad initial geometry due to ommission of triangle smoothing as well as fragment search.
+
+# 2019/07/15
 Changed to use ETKDG.
 ```
 Execution time: 424.5s
@@ -19,8 +35,6 @@ Violation occurred on line 26 in file /src/rdkit/Code/ForceField/UFF/DistanceCon
 Failed Expression: maxLen >= minLen
 ****
 ```
-
-
 Add hydrogens before running ETKDG.
 ```
 Execution time: 533.7s
