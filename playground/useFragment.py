@@ -10,7 +10,7 @@ from rdkit.Chem import rdDistGeom, ChemicalForceFields, rdMolAlign
 
 print(rdkit.__version__)
 
-with open('fragments.pickle', mode='rb') as f:
+with open('fragments-withHs.pickle', mode='rb') as f:
     db = pickle.load(f)
 
 w = Chem.SDWriter('result.sdf')
@@ -41,18 +41,18 @@ with open(sys.argv[1], "r") as f:
         fragments = Chem.rdmolops.GetMolFrags(rwmol.GetMol(), asMols=True)
         
         # Set boundary from fragments
-        processed = []
         for fragment in fragments:
             if fragment.GetNumHeavyAtoms() < 5:
                 continue
             fragment_smiles = Chem.MolToSmiles(fragment)
             if fragment_smiles not in db:
                 continue
-            #print(fragment_smiles)
+            print(fragment_smiles)
             cfragment = Chem.MolFromSmiles(fragment_smiles)
             distMat = db[fragment_smiles]
             #print("non canonical:", mol.GetSubstructMatches(fragment))
             #print("canonical:", mol.GetSubstructMatches(cfragment))
+            processed = []
             for match in mol.GetSubstructMatches(cfragment):
                 containProcessed = False
                 for a in match:
@@ -71,31 +71,18 @@ with open(sys.argv[1], "r") as f:
                             #print("Update {}, {}".format(p, q))
                             bm[p, q] = distMat[i, j] + 0.01
                         else:
-                            bm[p, q] = distMat[i, j] - 0.01
+                            bm[p, q] = max(0, distMat[i, j] - 0.01)
+                    for q in range(len(bm)):
+                        if q in match:
+                            continue
+                        if p < q:
+                            bm[p, q] = 1000
+                            bm[q, p] = 0
+                        else:
+                            bm[p, q] = 0
+                            bm[q, p] = 1000
         
-        #print("Pre-smoothing check")
-        for i in range(len(bm)):
-            for j in range(len(bm)):
-                if i < j:
-                    if bm[j, i] > bm[j, i]:
-                        print("({}, {}): {} < x < {}".format(i, j, bm[j, i], bm[i, j]))
-                        print("({}, {}): {} < x < {} (original)".format(i, j, bm_org[j, i], bm_org[i, j]))
-                else:
-                    if bm[i, j] > bm[j, i]:
-                        print("({}, {}): {} < x < {}".format(i, j, bm[i, j], bm[j, i]))
-                        print("({}, {}): {} < x < {} (original)".format(i, j, bm_org[i, j], bm_org[j, i]))
-        #DG.DoTriangleSmoothing(bm)
-        #print("Post-smoothing check")
-        #for i in range(len(bm)):
-        #    for j in range(len(bm)):
-        #        if i < j:
-        #            if bm[j, i] > bm[i, j]:
-        #                print("({}, {}): {} < x < {}".format(i, j, bm[j, i], bm[i, j]))
-        #                print("({}, {}): {} < x < {} (original)".format(i, j, bm_org[j, i], bm_org[i, j]))
-        #        else:
-        #            if bm[i, j] > bm[j, i]:
-        #                print("({}, {}): {} < x < {}".format(i, j, bm[i, j], bm[j, i]))
-        #                print("({}, {}): {} < x < {} (original)".format(i, j, bm_org[i, j], bm_org[j, i]))
+        DG.DoTriangleSmoothing(bm)
         ps = rdDistGeom.ETKDG()
         ps.useRandomCoords = True
         ps.SetBoundsMat(bm)
@@ -104,9 +91,8 @@ with open(sys.argv[1], "r") as f:
             rdDistGeom.EmbedMolecule(mol, ps)
         except:
             print("Failed to generate coordinates")
-            sys.exit()
-        ps = rdDistGeom.ETKDG()
-        ps.useRandomCoords = True
-        ps.randomSeed = 0xf00d
-        rdDistGeom.EmbedMolecule(mol, ps)
+            ps = rdDistGeom.ETKDG()
+            ps.useRandomCoords = True
+            ps.randomSeed = 0xf00d
+            rdDistGeom.EmbedMolecule(mol, ps)
         w.write(mol)

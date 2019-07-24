@@ -11,7 +11,14 @@ print(rdkit.__version__)
 suppl = Chem.SDMolSupplier(sys.argv[1])
 fragment_list = {}
 for mol in suppl:
-    print(Chem.MolToSmiles(mol))
+    if mol is None:
+        continue
+    print("before:", Chem.MolToSmiles(mol))
+    print("before (explicit Hs):", Chem.MolToSmiles(mol,allHsExplicit=True))
+    mol = Chem.AddHs(mol)
+    if mol is None:
+        continue
+    print("after:", Chem.MolToSmiles(mol,allHsExplicit=True))
     # Cut input molecule by rotatable bonds
     RotatableBond = Chem.MolFromSmarts('[!$(*#*)&!D1]-&!@[!$(*#*)&!D1]')
     rwmol = Chem.RWMol(mol)
@@ -25,7 +32,10 @@ for mol in suppl:
         if endAtom.GetAtomicNum() != 6 and endAtom.GetIsAromatic():
             endAtom.SetNumExplicitHs(1)
             endAtom.SetNoImplicit(True)
-    fragments = Chem.rdmolops.GetMolFrags(rwmol.GetMol(), asMols=True)
+    try:
+        fragments = Chem.rdmolops.GetMolFrags(rwmol.GetMol(), asMols=True)
+    except:
+        continue
     # Generate distance matrix from fragments
     for fragment in fragments:
         # Skip small fragments
@@ -47,7 +57,7 @@ for mol in suppl:
         print(smiles)
         fragment_list[smiles] = distMat
 # Save distance matrix by pickle
-with open('fragments.pickle', mode='wb') as f:
+with open('fragments-withHs.pickle', mode='wb') as f:
     pickle.dump(fragment_list, f)
 
 # For debug

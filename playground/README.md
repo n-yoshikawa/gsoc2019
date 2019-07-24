@@ -1,4 +1,15 @@
 # Worklog
+## 2019/07/24
+Update fragment embedding ETKDG to add hydrogen before generating fragments and use loose bounds for fragment and non-fragment atoms.
+```
+Execution time: 546.8s
+RMSD:		 1.7573520337390227
+Bond error:	 0.11225606188088266
+Angle error:	 4.473206076508021
+Torsion error:	 45.23117476219159
+TFD:		 0.22898344573283141
+Stereo correct:	 98.48284960422163
+```
 ## 2019/07/19
 Found `DG.DoTriangleSmoothing(bm)` generates incorrect bounds.
 The result fragment-constrained ETKDG after removing smoothing:
