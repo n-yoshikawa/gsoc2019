@@ -10,7 +10,7 @@ from rdkit.Chem import rdDistGeom, ChemicalForceFields, rdMolAlign
 
 print(rdkit.__version__)
 
-with open('fragments-withHs.pickle', mode='rb') as f:
+with open('fragments.pickle', mode='rb') as f:
     db = pickle.load(f)
 
 w = Chem.SDWriter('result.sdf')
@@ -21,9 +21,6 @@ with open(sys.argv[1], "r") as f:
         mol.SetProp("_Name", entry)
         print("Processing:", smiles)
         
-        mol = Chem.AddHs(mol)
-        bm = rdDistGeom.GetMoleculeBoundsMatrix(mol)
-        bm_org = copy.deepcopy(bm)
         
         # Cut input molecule by rotatable bonds
         RotatableBond = Chem.MolFromSmarts('[!$(*#*)&!D1]-&!@[!$(*#*)&!D1]')
@@ -39,19 +36,25 @@ with open(sys.argv[1], "r") as f:
                 endAtom.SetNumExplicitHs(1)
                 endAtom.SetNoImplicit(True)
         fragments = Chem.rdmolops.GetMolFrags(rwmol.GetMol(), asMols=True)
+
+        mol = Chem.AddHs(mol)
+        bm = rdDistGeom.GetMoleculeBoundsMatrix(mol)
+        bm_org = copy.deepcopy(bm)
         
         # Set boundary from fragments
         for fragment in fragments:
             if fragment.GetNumHeavyAtoms() < 5:
                 continue
             fragment_smiles = Chem.MolToSmiles(fragment)
+            cfragment = Chem.MolFromSmiles(fragment_smiles)
+            csmiles = Chem.MolToSmiles(cfragment)
+            #print(fragment_smiles, csmiles)
             if fragment_smiles not in db:
                 continue
-            print(fragment_smiles)
-            cfragment = Chem.MolFromSmiles(fragment_smiles)
+            cfragment = Chem.MolFromSmarts(fragment_smiles)
             distMat = db[fragment_smiles]
             #print("non canonical:", mol.GetSubstructMatches(fragment))
-            #print("canonical:", mol.GetSubstructMatches(cfragment))
+            #print("match:", mol.GetSubstructMatches(cfragment))
             processed = []
             for match in mol.GetSubstructMatches(cfragment):
                 containProcessed = False

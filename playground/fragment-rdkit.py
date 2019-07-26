@@ -13,12 +13,6 @@ fragment_list = {}
 for mol in suppl:
     if mol is None:
         continue
-    print("before:", Chem.MolToSmiles(mol))
-    print("before (explicit Hs):", Chem.MolToSmiles(mol,allHsExplicit=True))
-    mol = Chem.AddHs(mol)
-    if mol is None:
-        continue
-    print("after:", Chem.MolToSmiles(mol,allHsExplicit=True))
     # Cut input molecule by rotatable bonds
     RotatableBond = Chem.MolFromSmarts('[!$(*#*)&!D1]-&!@[!$(*#*)&!D1]')
     rwmol = Chem.RWMol(mol)
@@ -42,6 +36,7 @@ for mol in suppl:
         if fragment.GetNumHeavyAtoms() < 5:
             continue
         smiles = Chem.MolToSmiles(fragment)
+        print(smiles)
         atomOrder = fragment.GetPropsAsDict(includePrivate=True,includeComputed=True)['_smilesAtomOutputOrder']
         
         fragment = Chem.RenumberAtoms(fragment,atomOrder)
@@ -57,18 +52,5 @@ for mol in suppl:
         print(smiles)
         fragment_list[smiles] = distMat
 # Save distance matrix by pickle
-with open('fragments-withHs.pickle', mode='wb') as f:
+with open('fragments.pickle', mode='wb') as f:
     pickle.dump(fragment_list, f)
-
-# For debug
-# Get canonical order
-canonical_order = list(Chem.rdmolfiles.CanonicalRankAtoms(mol, breakTies=True))
-print(canonical_order)
-
-# Print canonical order of match
-for fragment_smiles in fragment_list:
-    print(fragment_smiles)
-    fragment = Chem.MolFromSmiles(fragment_smiles)
-    for match in mol.GetSubstructMatches(fragment):
-        print("match:", match)
-        print("canonical:", [canonical_order[i] for i in match])

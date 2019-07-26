@@ -1,4 +1,29 @@
 # Worklog
+## 2019/07/26
+Changed to use heavy atom only fragment. The result was worse than default distance geometry.
+
+Fragment embedding + Normal DG
+```
+Execution time: 1054.7s
+RMSD:		 2.8576767339371645
+Bond error:	 0.6903139839927289
+Angle error:	 15.80536415266437
+Torsion error:	 69.2389117701094
+TFD:		 0.4031145785080678
+Stereo correct:	 96.98768689533861
+```
+
+Fragment embedding + ETKDG
+```
+Execution time: 2520.6s
+RMSD:		 3.12431083131034
+Bond error:	 1.1178401171718733
+Angle error:	 19.81619260760285
+Torsion error:	 65.623942936236
+TFD:		 0.3374656297058002
+Stereo correct:	 94.70096745822339
+```
+
 ## 2019/07/24
 Update fragment embedding ETKDG to add hydrogen before generating fragments and use loose bounds for fragment and non-fragment atoms.
 ```
