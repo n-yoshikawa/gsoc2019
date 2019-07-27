@@ -19,7 +19,7 @@ with open(sys.argv[1], "r") as f:
         smiles, entry = line.split()
         mol = Chem.MolFromSmiles(smiles)
         mol.SetProp("_Name", entry)
-        print("Processing:", smiles)
+        print("Processing:", entry, smiles)
         
         
         # Cut input molecule by rotatable bonds
@@ -48,13 +48,12 @@ with open(sys.argv[1], "r") as f:
             fragment_smiles = Chem.MolToSmiles(fragment)
             cfragment = Chem.MolFromSmiles(fragment_smiles)
             csmiles = Chem.MolToSmiles(cfragment)
-            #print(fragment_smiles, csmiles)
             if fragment_smiles not in db:
                 continue
             cfragment = Chem.MolFromSmarts(fragment_smiles)
             distMat = db[fragment_smiles]
             #print("non canonical:", mol.GetSubstructMatches(fragment))
-            #print("match:", mol.GetSubstructMatches(cfragment))
+            print("{}, match: {}".format(csmiles.rstrip(), mol.GetSubstructMatches(cfragment)))
             processed = []
             for match in mol.GetSubstructMatches(cfragment):
                 containProcessed = False
@@ -71,21 +70,32 @@ with open(sys.argv[1], "r") as f:
                         if i == j:
                             continue
                         elif p < q:
-                            #print("Update {}, {}".format(p, q))
-                            bm[p, q] = distMat[i, j] + 0.01
+                            bm[p, q] = distMat[i, j] + 0.1
+                            bm[q, p] = max(0, distMat[i, j] - 0.1)
+
                         else:
-                            bm[p, q] = max(0, distMat[i, j] - 0.01)
+                            bm[p, q] = max(0, distMat[i, j] - 0.1)
+                            bm[q, p] = distMat[i, j] + 0.1
                     for q in range(len(bm)):
                         if q in match:
                             continue
-                        if p < q:
-                            bm[p, q] = 1000
-                            bm[q, p] = 0
-                        else:
-                            bm[p, q] = 0
-                            bm[q, p] = 1000
-        
+                        if mol.GetAtomWithIdx(q).GetSymbol() != 'H':
+                            if p < q:
+                                bm[p, q] = 1000
+                                bm[q, p] = 0
+                            else:
+                                bm[p, q] = 0
+                                bm[q, p] = 1000
+        print("Before smoothing:")
+        print(bm)
         DG.DoTriangleSmoothing(bm)
+        print("After smoothing:")
+        print(bm)
+        for i in range(len(bm)):
+            for j in range(i+1, len(bm)):
+                if bm[i, j] < bm[j, i]:
+                    print("Assertion failed: ({}, {}) {} < x < {}".format(i, j, bm[j, i], bm[i, j]))
+                assert(bm[i, j] >= bm[j, i])
         ps = rdDistGeom.ETKDG()
         ps.useRandomCoords = True
         ps.SetBoundsMat(bm)
