@@ -1,4 +1,15 @@
 # Worklog
+## 2019/08/02
+Fragment Embedding + Modified triangle bounds smoothing + Normal DG
+```
+Execution time: 242.3s
+RMSD:		 2.2826221146867973
+Bond error:	 0.07416067971676958
+Angle error:	 4.599007412618832
+Torsion error:	 56.4315097058549
+TFD:		 0.4785230393480938
+Stereo correct:	 98.52682497801231
+```
 ## 2019/07/26
 Changed to use heavy atom only fragment. The result was worse than default distance geometry.
 

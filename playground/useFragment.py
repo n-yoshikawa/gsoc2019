@@ -53,7 +53,7 @@ with open(sys.argv[1], "r") as f:
             cfragment = Chem.MolFromSmarts(fragment_smiles)
             distMat = db[fragment_smiles]
             #print("non canonical:", mol.GetSubstructMatches(fragment))
-            print("{}, match: {}".format(csmiles.rstrip(), mol.GetSubstructMatches(cfragment)))
+            #print("{}, match: {}".format(csmiles.rstrip(), mol.GetSubstructMatches(cfragment)))
             processed = []
             for match in mol.GetSubstructMatches(cfragment):
                 containProcessed = False
@@ -79,48 +79,33 @@ with open(sys.argv[1], "r") as f:
                     for q in range(len(bm)):
                         if q in match:
                             continue
-                        table = Chem.GetPeriodicTable()
-                        pNum = mol.GetAtomWithIdx(p).GetAtomicNum()
-                        qNum = mol.GetAtomWithIdx(q).GetAtomicNum()
-                        pVDW = Chem.PeriodicTable.GetRvdw(table, pNum)
-                        qVDW = Chem.PeriodicTable.GetRvdw(table, qNum)
-                        # https://github.com/rdkit/rdkit/blob/master/Code/GraphMol/DistGeomHelpers/BoundsMatrixBuilder.cpp#L240
-                        bl = (pVDW + qVDW) / 2.0
-                        if p < q:
-                            if mol.GetBondBetweenAtoms(p, q) is None:
+                        if mol.GetAtomWithIdx(q).GetSymbol() != 'H':
+                            if p < q:
                                 bm[p, q] = 1000
+                                bm[q, p] = 0
                             else:
-                                bm[p, q] = bl * 1.5
-                            bm[q, p] = bl * 0.5
-                        else:
-                            if mol.GetBondBetweenAtoms(p, q) is None:
+                                bm[p, q] = 0
                                 bm[q, p] = 1000
-                            else:
-                                bm[q, p] = bl * 1.5
-                            bm[p, q] = bl * 0.5
         #print("original:")
         #for i in range(len(bm)):
         #    for j in range(i+1, len(bm)):
         #        print("({}, {}) {} < x < {}".format(i, j, bm_org[j, i], bm_org[i, j]))
-        #print("Before smoothing:")
-        #for i in range(len(bm)):
-        #    for j in range(i+1, len(bm)):
-        #        print("({}, {}) {} < x < {}".format(i, j, bm[j, i], bm[i, j]))
-        #        if bm[i, j] < bm[j, i]:
-        #            print("   ***** Assertion failed !! *****")
-        #        assert(bm[i, j] >= bm[j, i])
+        for i in range(len(bm)):
+            for j in range(i+1, len(bm)):
+                #print("({}, {}) {} < x < {}".format(i, j, bm[j, i], bm[i, j]))
+                if bm[i, j] < bm[j, i]:
+                    print("   ***** Assertion failed !! (Before smoothing) *****")
+                assert(bm[i, j] >= bm[j, i])
 
         if DG.DoTriangleSmoothing(bm) == False:
             print("Smoothing failed")
-            bm = bm_org
 
-        #print("After smoothing:")
-        #for i in range(len(bm)):
-        #    for j in range(i+1, len(bm)):
-        #        print("({}, {}) {} < x < {}".format(i, j, bm[j, i], bm[i, j]))
-        #        if bm[i, j] < bm[j, i]:
-        #            print("   ***** Assertion failed !! *****")
-        #        assert(bm[i, j] >= bm[j, i])
+        for i in range(len(bm)):
+            for j in range(i+1, len(bm)):
+                #print("({}, {}) {} < x < {}".format(i, j, bm[j, i], bm[i, j]))
+                if bm[i, j] < bm[j, i]:
+                    print("   ***** Assertion failed !! (After smoothing) *****")
+                assert(bm[i, j] >= bm[j, i])
         ps = rdDistGeom.EmbedParameters()
         ps.useRandomCoords = True
         ps.SetBoundsMat(bm)
